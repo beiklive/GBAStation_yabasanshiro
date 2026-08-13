@@ -21,6 +21,7 @@ set(PORT_LIBRARIES EGL GLESv2 glapi drm_nouveau nx m SDL2  )
 
 set(yabause_nx_SOURCES
 	main.cpp
+	../gbastation/GBAStationPlatform.cpp
 	#InputManager.h
 	#InputManager.cpp
 	#InputConfig.h
@@ -32,21 +33,21 @@ set(yabause_nx_SOURCES
 
 include_directories( ${YABAUSE_INCLUDE_DIR} ${PORT_INCLUDE_DIRS} ${Boost_INCLUDE_DIR} "nanogui-sdl/include" "nanogui-sdl/ext/eigen" )
 link_directories( /opt/devkitpro/devkitA64/lib/ /opt/devkitpro/libnx/lib/ /opt/devkitpro/portlibs/switch/lib/  ) 
-add_executable(yabause-nx ${yabause_nx_SOURCES})
-target_link_libraries(yabause-nx yabause ${YABAUSE_LIBRARIES} ${PORT_LIBRARIES}  )
+add_executable(GBAStationYabaSanshiroStub ${yabause_nx_SOURCES})
+target_link_libraries(GBAStationYabaSanshiroStub yabause ${YABAUSE_LIBRARIES} ${PORT_LIBRARIES}  )
 
 set( CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -specs=/opt/devkitpro/libnx/switch.specs -g -Wl,-Map,memory.map" )
 
 #add_dependencies(yabause-nx Json png zlib)
-yab_port_success(yabause-nx)
+yab_port_success(GBAStationYabaSanshiroStub)
 
 #install(TARGETS yabause-xu4 DESTINATION "/opt/retropie/emulators/yabasanshiro/")
 #install(FILES "README.md" DESTINATION "/opt/retropie/emulators/yabasanshiro/" )
 
-add_custom_command(TARGET yabause-nx
+add_custom_command(TARGET GBAStationYabaSanshiroStub
         POST_BUILD
         COMMAND /bin/bash ${CMAKE_CURRENT_SOURCE_DIR}/genSwitchExecutables.sh 
 				)
 				
-install(TARGETS yabause-nx DESTINATION "bin")
+install(TARGETS GBAStationYabaSanshiroStub DESTINATION "bin")
 install(FILES "README.md" DESTINATION "." )

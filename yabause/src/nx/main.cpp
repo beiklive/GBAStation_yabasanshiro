@@ -20,8 +20,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 
 #include <exception>
 #include <functional>
-#include <string>  
+#include <string>
 #include <vector>
+#include <cstring>
+#include <cstdlib>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -37,6 +39,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 
 #include <switch.h>
 
+#include "../gbastation/GBAStationPlatform.h"
+
 extern "C" {
 #include "../config.h"
 #include "yabause.h"
@@ -47,6 +51,7 @@ extern "C" {
 #include "peripheral.h"
 #include "persdljoy.h"
 #include "m68kcore.h"
+#include "memory.h"
 #include "sh2core.h"
 #include "sh2int.h"
 #include "cdbase.h"
@@ -111,11 +116,11 @@ void userAppExit()
 #endif
 
 extern "C" {
-static char biospath[256] = "./yabasanshiro/bios.bin";
-static char cdpath[256] = "./yabasanshiro/nights.cue";
+static char biospath[256] = "";
+static char cdpath[256] = "";
 //static char cdpath[256] = "/home/pigaming/RetroPie/roms/saturn/gd.cue";
 //static char cdpath[256] = "/home/pigaming/RetroPie/roms/saturn/Virtua Fighter Kids (1996)(Sega)(JP).ccd";
-static char buppath[256] = "./back.bin";
+static char buppath[256] = "";
 static char mpegpath[256] = "\0";
 static char cartpath[256] = "\0";
 
@@ -394,10 +399,34 @@ static void deinitEgl()
 
 int main(int argc, char** argv)
 {
-  //inputmng = InputManager::getInstance();
+  const GBAStation::LaunchInfo launch = GBAStation::ReadLaunchInfo(argc, argv);
+  if (launch.rom_path.empty())
+  {
+    printf("GBAStationYabaSanshiroStub: missing ROM path\n");
+    GBAStation::ReturnToLauncher(launch);
+    return EXIT_FAILURE;
+  }
 
-  std::string bckup_dir = "./backup.bin";
-  strcpy( buppath, bckup_dir.c_str() );
+  GBAStation::EnsureSaturnDirectories();
+  const std::string bios = GBAStation::FindSaturnBios();
+  const std::string backup = "sdmc:/GBAStation/saturn/backup/backup.ram";
+  g_frame_skip = std::atoi(GBAStation::ReadConfigValue("core.saturn.frame_skip", "0").c_str());
+  g_resolution_mode = std::atoi(GBAStation::ReadConfigValue("core.saturn.resolution_mode", "0").c_str());
+  const bool use_emulated_bios =
+      GBAStation::ReadConfigValue("core.saturn.emulated_bios", "0") == "1";
+  std::snprintf(cdpath, sizeof(cdpath), "%s", launch.rom_path.c_str());
+  std::snprintf(buppath, sizeof(buppath), "%s", backup.c_str());
+  if (!use_emulated_bios && !bios.empty())
+  {
+    g_emulated_bios = 0;
+    std::snprintf(biospath, sizeof(biospath), "%s", bios.c_str());
+  }
+  else
+  {
+    // A missing BIOS must not accidentally load the legacy relative path.
+    g_emulated_bios = 1;
+    biospath[0] = '\0';
+  }
 
 #if 0  
   printf("\033[2J");
@@ -459,7 +488,10 @@ int main(int argc, char** argv)
 	}
 #endif
   if (!initEgl(nwindowGetDefault()))
+  {
+      GBAStation::ReturnToLauncher(launch);
       return EXIT_FAILURE;
+  }
 
   printf("context renderer string: \"%s\"\n", glGetString(GL_RENDERER));
   printf("context vendor string: \"%s\"\n", glGetString(GL_VENDOR));
@@ -468,6 +500,8 @@ int main(int argc, char** argv)
 
   if( yabauseinit() == -1 ) {
       printf("Fail to yabauseinit Bye! (%s)", SDL_GetError() );
+      deinitEgl();
+      GBAStation::ReturnToLauncher(launch);
       return -1;
   }
 
@@ -706,28 +740,34 @@ int main(int argc, char** argv)
   while(appletMainLoop()) {
       // Get and process input
         hidScanInput();
-        u32 kDown = hidKeysDown(CONTROLLER_P1_AUTO);
-        if ( (kDown & KEY_MINUS) ) 
+        const u64 kHeld = hidKeysHeld(CONTROLLER_P1_AUTO);
+        const u64 kDown = hidKeysDown(CONTROLLER_P1_AUTO);
+        if (GBAStation::IsButtonMappingPressed("saturn.hotkey.menu.pad", kDown, HidNpadButton_StickL))
             break;
 
     int player = 0;
-    if (kDown & KEY_B) PerKeyDown(MAKE_PAD(player,PERPAD_A)); else PerKeyUp(MAKE_PAD(player,PERPAD_A));
-    if (kDown & KEY_A) PerKeyDown(MAKE_PAD(player,PERPAD_B)); else PerKeyUp(MAKE_PAD(player,PERPAD_B));
-    if (kDown & KEY_R) PerKeyDown(MAKE_PAD(player,PERPAD_C)); else PerKeyUp(MAKE_PAD(player,PERPAD_C));
+    if (GBAStation::IsButtonMappingPressed("saturn.handle.a", kHeld, HidNpadButton_B)) PerKeyDown(MAKE_PAD(player,PERPAD_A)); else PerKeyUp(MAKE_PAD(player,PERPAD_A));
+    if (GBAStation::IsButtonMappingPressed("saturn.handle.b", kHeld, HidNpadButton_A)) PerKeyDown(MAKE_PAD(player,PERPAD_B)); else PerKeyUp(MAKE_PAD(player,PERPAD_B));
+    if (GBAStation::IsButtonMappingPressed("saturn.handle.c", kHeld, HidNpadButton_X)) PerKeyDown(MAKE_PAD(player,PERPAD_C)); else PerKeyUp(MAKE_PAD(player,PERPAD_C));
 
-    if (kDown & KEY_Y) PerKeyDown(MAKE_PAD(player,PERPAD_X)); else PerKeyUp(MAKE_PAD(player,PERPAD_X));
-    if (kDown & KEY_X) PerKeyDown(MAKE_PAD(player,PERPAD_Y)); else PerKeyUp(MAKE_PAD(player,PERPAD_Y));
-    if (kDown & KEY_L) PerKeyDown(MAKE_PAD(player,PERPAD_Z)); else PerKeyUp(MAKE_PAD(player,PERPAD_Z));
+    if (GBAStation::IsButtonMappingPressed("saturn.handle.x", kHeld, HidNpadButton_Y)) PerKeyDown(MAKE_PAD(player,PERPAD_X)); else PerKeyUp(MAKE_PAD(player,PERPAD_X));
+    if (GBAStation::IsButtonMappingPressed("saturn.handle.y", kHeld, HidNpadButton_L)) PerKeyDown(MAKE_PAD(player,PERPAD_Y)); else PerKeyUp(MAKE_PAD(player,PERPAD_Y));
+    if (GBAStation::IsButtonMappingPressed("saturn.handle.z", kHeld, HidNpadButton_R)) PerKeyDown(MAKE_PAD(player,PERPAD_Z)); else PerKeyUp(MAKE_PAD(player,PERPAD_Z));
 
-    if (kDown & KEY_DLEFT) PerKeyDown(MAKE_PAD(player,PERPAD_LEFT)); else PerKeyUp(MAKE_PAD(player,PERPAD_LEFT));
-    if (kDown & KEY_DRIGHT) PerKeyDown(MAKE_PAD(player,PERPAD_RIGHT)); else PerKeyUp(MAKE_PAD(player,PERPAD_RIGHT));
-    if (kDown & KEY_DUP) PerKeyDown(MAKE_PAD(player,PERPAD_UP)); else PerKeyUp(MAKE_PAD(player,PERPAD_UP));
-    if (kDown & KEY_DDOWN) PerKeyDown(MAKE_PAD(player,PERPAD_DOWN)); else PerKeyUp(MAKE_PAD(player,PERPAD_DOWN));
+    if (GBAStation::IsButtonMappingPressed("saturn.handle.left", kHeld, HidNpadButton_Left)) PerKeyDown(MAKE_PAD(player,PERPAD_LEFT)); else PerKeyUp(MAKE_PAD(player,PERPAD_LEFT));
+    if (GBAStation::IsButtonMappingPressed("saturn.handle.right", kHeld, HidNpadButton_Right)) PerKeyDown(MAKE_PAD(player,PERPAD_RIGHT)); else PerKeyUp(MAKE_PAD(player,PERPAD_RIGHT));
+    if (GBAStation::IsButtonMappingPressed("saturn.handle.up", kHeld, HidNpadButton_Up)) PerKeyDown(MAKE_PAD(player,PERPAD_UP)); else PerKeyUp(MAKE_PAD(player,PERPAD_UP));
+    if (GBAStation::IsButtonMappingPressed("saturn.handle.down", kHeld, HidNpadButton_Down)) PerKeyDown(MAKE_PAD(player,PERPAD_DOWN)); else PerKeyUp(MAKE_PAD(player,PERPAD_DOWN));
 
-    if (kDown & KEY_PLUS) PerKeyDown(MAKE_PAD(player,PERPAD_START)); else PerKeyUp(MAKE_PAD(player,PERPAD_START));
+    if (GBAStation::IsButtonMappingPressed("saturn.handle.start", kHeld, HidNpadButton_Plus)) PerKeyDown(MAKE_PAD(player,PERPAD_START)); else PerKeyUp(MAKE_PAD(player,PERPAD_START));
 
-    if (kDown & KEY_ZR) PerKeyDown(MAKE_PAD(player,PERPAD_RIGHT_TRIGGER)); else PerKeyUp(MAKE_PAD(player,PERPAD_RIGHT_TRIGGER));
-    if (kDown & KEY_ZL) PerKeyDown(MAKE_PAD(player,PERPAD_LEFT_TRIGGER)); else PerKeyUp(MAKE_PAD(player,PERPAD_LEFT_TRIGGER));
+    if (GBAStation::IsButtonMappingPressed("saturn.handle.r", kHeld, HidNpadButton_ZR)) PerKeyDown(MAKE_PAD(player,PERPAD_RIGHT_TRIGGER)); else PerKeyUp(MAKE_PAD(player,PERPAD_RIGHT_TRIGGER));
+    if (GBAStation::IsButtonMappingPressed("saturn.handle.l", kHeld, HidNpadButton_ZL)) PerKeyDown(MAKE_PAD(player,PERPAD_LEFT_TRIGGER)); else PerKeyUp(MAKE_PAD(player,PERPAD_LEFT_TRIGGER));
+
+    if (GBAStation::IsButtonMappingPressed("saturn.hotkey.quicksave.pad", kDown, 0))
+      YabSaveState(GBAStation::StatePathForRom(launch.rom_path, 1).c_str());
+    if (GBAStation::IsButtonMappingPressed("saturn.hotkey.quickload.pad", kDown, 0))
+      YabLoadState(GBAStation::StatePathForRom(launch.rom_path, 1).c_str());
 
     //glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
     //glClear(GL_COLOR_BUFFER_BIT);
@@ -737,6 +777,7 @@ int main(int argc, char** argv)
 #endif  
   YabauseDeInit();
   deinitEgl();
+  GBAStation::ReturnToLauncher(launch);
   return 0;
 }
 

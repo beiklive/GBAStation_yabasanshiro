@@ -2,9 +2,9 @@
 
 set -o xtrace
 
-mv yabasanshiro yabasanshiro.elf
-elf2nro yabasanshiro.elf ../../yabasanshiro.nro
-elf2nso yabasanshiro.elf ../../yabasanshiro.nso
+mv GBAStationYabaSanshiroStub GBAStationYabaSanshiroStub.elf
+elf2nro GBAStationYabaSanshiroStub.elf ../../GBAStationYabaSanshiroStub.nro
+elf2nso GBAStationYabaSanshiroStub.elf ../../GBAStationYabaSanshiroStub.nso
 
 #mkdir -p exefs
 #cp yabasanshiro.nso ./exefs/main
