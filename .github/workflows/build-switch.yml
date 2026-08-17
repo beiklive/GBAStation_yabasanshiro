@@ -6,10 +6,12 @@ on:
     tags: ['v*']
     paths:
       - 'yabause/**'
+      - 'build_local.sh'
       - '.github/workflows/build-switch.yml'
   pull_request:
     paths:
       - 'yabause/**'
+      - 'build_local.sh'
       - '.github/workflows/build-switch.yml'
   workflow_dispatch:
 
@@ -30,14 +32,7 @@ jobs:
           apt-get install -y --no-install-recommends cmake git ninja-build
 
       - name: Build NRO
-        run: |
-          cmake -Wno-dev -S yabause -B build-switch -G Ninja \
-            -DCMAKE_TOOLCHAIN_FILE=src/nx/nx-toolchain.cmake \
-            -DYAB_PORTS=nx \
-            -DYAB_WANT_C68K=FALSE \
-            -DSH2_DYNAREC=FALSE \
-            -DYAB_WANT_DYNAREC_DEVMIYAX=OFF
-          cmake --build build-switch --target GBAStationYabaSanshiroStub --parallel 2
+        run: BUILD_DIR=build-switch ./build_local.sh -j 2
 
       - uses: actions/upload-artifact@v4
         with:
