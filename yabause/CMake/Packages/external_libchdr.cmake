@@ -49,6 +49,10 @@ ExternalProject_Add(
               -DCMAKE_C_FLAGS=${CMAKE_C_FLAGS}
               ${ADDITIONAL_CMAKE_ARGS}
   BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --target chdr-static
+  # libchdr unconditionally adds host-only benchmark targets to its install
+  # target.  The Switch cross linker rejects those binaries, while yabause
+  # only consumes the archives built by chdr-static above.
+  INSTALL_COMMAND ""
 )
 
 ExternalProject_Get_Property(libchdr SOURCE_DIR)
