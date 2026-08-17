@@ -33,7 +33,8 @@ set(yabause_nx_SOURCES
 ) 
 
 
-include_directories( ${YABAUSE_INCLUDE_DIR} ${PORT_INCLUDE_DIRS} ${Boost_INCLUDE_DIR} "nanogui-sdl/include" "nanogui-sdl/ext/eigen" )
+include_directories( ${YABAUSE_INCLUDE_DIR} ${PORT_INCLUDE_DIRS} ${Boost_INCLUDE_DIR}
+  "${CMAKE_CURRENT_BINARY_DIR}/.." "nanogui-sdl/include" "nanogui-sdl/ext/eigen" )
 link_directories( /opt/devkitpro/devkitA64/lib/ /opt/devkitpro/libnx/lib/ /opt/devkitpro/portlibs/switch/lib/  ) 
 add_executable(GBAStationYabaSanshiroStub ${yabause_nx_SOURCES})
 target_link_libraries(GBAStationYabaSanshiroStub yabause ${LIBCHDR_LIBRARIES} ${YABAUSE_LIBRARIES} ${PORT_LIBRARIES}  )
