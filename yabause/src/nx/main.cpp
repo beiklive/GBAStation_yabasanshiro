@@ -409,7 +409,7 @@ int main(int argc, char** argv)
 
   GBAStation::EnsureSaturnDirectories();
   const std::string bios = GBAStation::FindSaturnBios();
-  const std::string backup = "sdmc:/GBAStation/saturn/backup/backup.ram";
+  const std::string backup = GBAStation::BackupPathForRom(launch.rom_path);
   g_frame_skip = std::atoi(GBAStation::ReadConfigValue("core.saturn.frame_skip", "0").c_str());
   g_resolution_mode = std::atoi(GBAStation::ReadConfigValue("core.saturn.resolution_mode", "0").c_str());
   const bool use_emulated_bios =

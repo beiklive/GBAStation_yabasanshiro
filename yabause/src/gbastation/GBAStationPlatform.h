@@ -16,6 +16,7 @@ LaunchInfo ReadLaunchInfo(int argc, char** argv);
 void ReturnToLauncher(const LaunchInfo& launch);
 void EnsureSaturnDirectories();
 std::string FindSaturnBios();
+std::string BackupPathForRom(const std::string& rom_path);
 std::string StatePathForRom(const std::string& rom_path, unsigned slot);
 std::string ReadConfigValue(const char* key, const char* fallback = "");
 

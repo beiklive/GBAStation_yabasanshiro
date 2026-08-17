@@ -2,7 +2,7 @@ project(yabause-nx)
 
 yab_port_start()
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
 
 #add_subdirectory(pugixml)
 #add_subdirectory(nanogui-sdl)
