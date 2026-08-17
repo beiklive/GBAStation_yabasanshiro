@@ -884,7 +884,7 @@ static void FASTCALL Vdp1ReadTexture(vdp1cmd_struct *cmd, YglSprite *sprite, Ygl
         } else if ((dot | colorBank) == nromal_shadow) {
           *texture->textdata++ = VDP1COLOR(1, 0, priority, 1, sprite_window, 0);
         } else {
-          const int colorindex = (dot | colorBank);
+          u16 colorindex = (u16)(dot | colorBank);
           if ((colorindex & 0x8000) && (fixVdp2Regs->SPCTL & 0x20)) {
             *texture->textdata++ = VDP1COLOR(0, colorcl, priority, 0, 0, VDP1COLOR16TO24(colorindex));
           } else {
@@ -932,8 +932,9 @@ static void FASTCALL Vdp1ReadTexture(vdp1cmd_struct *cmd, YglSprite *sprite, Ygl
              *texture->textdata++ = VDP1COLOR(0, colorcl, priority, 0, 0, VDP1COLOR16TO24(dot));
           }
           else {
-            Vdp1MaskSpritePixel(fixVdp2Regs->SPCTL & 0xF, &dot, &colorcl);
-            *texture->textdata++ = VDP1COLOR(1, colorcl, priority, 0, 0, dot );
+            u16 color = (u16)dot;
+            Vdp1MaskSpritePixel(fixVdp2Regs->SPCTL & 0xF, &color, &colorcl);
+            *texture->textdata++ = VDP1COLOR(1, colorcl, priority, 0, 0, color);
           }
         }
       }

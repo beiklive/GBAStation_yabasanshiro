@@ -7,8 +7,10 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
 #add_subdirectory(pugixml)
 #add_subdirectory(nanogui-sdl)
 
-include( ../glfw/external_zlib.cmake )
-include( ../glfw/external_libpng.cmake )
+# The common yabause target already owns zlib through
+# CMake/Packages/external_zlib.cmake.  Importing the GLFW copies here created
+# duplicate zlib targets and made an NX configuration fail before compilation.
+# This port does not link against libpng, so neither GLFW helper is needed.
 
 #------------------------------------------------------------------------------
 # nlohmann/json

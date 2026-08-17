@@ -24,6 +24,14 @@ elseif(IOS)
     -DPLATFORM=${PLATFORM}
   )
 
+elseif(CMAKE_TOOLCHAIN_FILE)
+
+  get_filename_component(TOOL_CHAIN_ABSOLUTE_PATH "${CMAKE_TOOLCHAIN_FILE}"
+                         REALPATH BASE_DIR "${CMAKE_BINARY_DIR}")
+  set(ADDITIONAL_CMAKE_ARGS
+    -DCMAKE_TOOLCHAIN_FILE=${TOOL_CHAIN_ABSOLUTE_PATH}
+  )
+
 else()
   set(ADDITIONAL_CMAKE_ARGS "")
 endif()
@@ -35,9 +43,12 @@ ExternalProject_Add(
   #PATCH_COMMAND  git apply "${CMAKE_SOURCE_DIR}/CMake/Packages/libchdr.patch"
   CMAKE_ARGS  -DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/libchdr 
               -DCMAKE_BUILD_TYPE:STRING=Release 
+              -DBUILD_SHARED_LIBS:BOOL=OFF
+              -DBUILD_TESTING:BOOL=OFF
               -DCMAKE_CXX_FLAGS=${CMAKE_CXX_FLAGS}
               -DCMAKE_C_FLAGS=${CMAKE_C_FLAGS}
               ${ADDITIONAL_CMAKE_ARGS}
+  BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --target chdr-static
 )
 
 ExternalProject_Get_Property(libchdr SOURCE_DIR)
