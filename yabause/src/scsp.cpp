@@ -168,7 +168,7 @@ static int g_scsp_main_mode = 0;
 
 #include "sh2core.h"
 
-std::atomic<u32> m68kcycle = 0;
+std::atomic<u32> m68kcycle{0};
 
 extern "C" {
   extern volatile u64 saved_m68k_cycles;
@@ -5511,6 +5511,7 @@ void ScspExec(){
 
 #include <stdio.h>
 #include <string.h>
+#include <climits>
 #include <inttypes.h>
 #define __STDC_FORMAT_MACROS
 

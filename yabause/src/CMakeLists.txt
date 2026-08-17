@@ -724,6 +724,18 @@ option(YAB_WANT_MUSASHI "Enable musashi 68k" ON)
 #TODO cross compile builds m68kmake for the target platform instead
 #of the native one, making it impossible to generate the core
 if (YAB_WANT_MUSASHI)
+    # The generated Musashi sources are kept in the tree. Building the
+    # generator as a Windows host executable is unnecessary for Switch and
+    # is not reliable when cross-compiling from MSYS2.
+    if (YAB_PORTS STREQUAL "nx")
+        set (MUSASHI_GENERATED_SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/musashi/m68kopac.c
+            ${CMAKE_CURRENT_SOURCE_DIR}/musashi/m68kopdm.c
+            ${CMAKE_CURRENT_SOURCE_DIR}/musashi/m68kopnz.c
+            ${CMAKE_CURRENT_SOURCE_DIR}/musashi/m68kops.c)
+        set (MUSASHI_GENERATED_HEADERS
+            ${CMAKE_CURRENT_SOURCE_DIR}/musashi/m68kops.h)
+    else()
     # m68kmake generates sources during the build and must run on the build
     # host. Do not inherit the Switch cross compiler for this helper.
     find_program(YAB_M68KMAKE_HOST_CC NAMES gcc
@@ -742,32 +754,27 @@ if (YAB_WANT_MUSASHI)
     set (MUSASHI_GENERATED_HEADERS
         ${CMAKE_CURRENT_BINARY_DIR}/musashi/m68kops.h)
 
-    include(ExternalProject)
     set(M68KMAKE_HOST_EXECUTABLE ${CMAKE_CURRENT_BINARY_DIR}/musashi/m68kmake)
     if(CMAKE_HOST_WIN32 OR CMAKE_HOST_SYSTEM_NAME MATCHES "Windows|MSYS")
         set(M68KMAKE_HOST_EXECUTABLE "${M68KMAKE_HOST_EXECUTABLE}.exe")
     endif()
     set(M68KMAKE_HOST_TEMP ${CMAKE_CURRENT_BINARY_DIR}/musashi/tmp)
-    file(MAKE_DIRECTORY ${M68KMAKE_HOST_TEMP})
-    file(TO_NATIVE_PATH "${M68KMAKE_HOST_TEMP}" M68KMAKE_HOST_TEMP_NATIVE)
-    if(CMAKE_HOST_SYSTEM_NAME MATCHES "MSYS")
-        string(REGEX REPLACE "^/([A-Za-z])/" "\\1:/"
-            M68KMAKE_HOST_TEMP_NATIVE "${M68KMAKE_HOST_TEMP_NATIVE}")
-    endif()
-    set(M68KMAKE_HOST_SHELL /bin/sh)
-    if(CMAKE_HOST_SYSTEM_NAME MATCHES "MSYS")
-        set(M68KMAKE_HOST_SHELL /usr/bin/bash)
-    endif()
-    set(M68KMAKE_BUILD_COMMAND ${M68KMAKE_HOST_SHELL} -lc
-        "export TMP=${M68KMAKE_HOST_TEMP_NATIVE} TEMP=${M68KMAKE_HOST_TEMP_NATIVE}; ${YAB_M68KMAKE_HOST_CC} ${CMAKE_CURRENT_SOURCE_DIR}/musashi/m68kmake.c -o ${M68KMAKE_HOST_EXECUTABLE} && ${M68KMAKE_HOST_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/musashi/ ${CMAKE_CURRENT_SOURCE_DIR}/musashi/m68k_in.c")
-    ExternalProject_Add(m68kmake
-        DOWNLOAD_COMMAND ""
-        SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/musashi
-        CONFIGURE_COMMAND ""
-        INSTALL_COMMAND ""
-        BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/musashi
-        BUILD_COMMAND ${M68KMAKE_BUILD_COMMAND}
+    add_custom_command(
+        OUTPUT ${MUSASHI_GENERATED_SOURCES} ${MUSASHI_GENERATED_HEADERS}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${M68KMAKE_HOST_TEMP}
+        COMMAND ${CMAKE_COMMAND} -E env
+            TMP=${M68KMAKE_HOST_TEMP} TEMP=${M68KMAKE_HOST_TEMP}
+            ${YAB_M68KMAKE_HOST_CC} ${CMAKE_CURRENT_SOURCE_DIR}/musashi/m68kmake.c
+            -o ${M68KMAKE_HOST_EXECUTABLE}
+        COMMAND ${M68KMAKE_HOST_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/musashi/
+            ${CMAKE_CURRENT_SOURCE_DIR}/musashi/m68k_in.c
+        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/musashi/m68kmake.c
+            ${CMAKE_CURRENT_SOURCE_DIR}/musashi/m68k_in.c
+        COMMENT "Generating musashi 68k core"
+        VERBATIM
     )
+    add_custom_target(m68kmake DEPENDS ${MUSASHI_GENERATED_SOURCES} ${MUSASHI_GENERATED_HEADERS})
+    endif()
 
     add_definitions(-DHAVE_MUSASHI=1)
 
@@ -1095,7 +1102,7 @@ if (YAB_WANT_C68K)
 	add_dependencies(yabause c68kinc)
 endif(YAB_WANT_C68K)
 
-if (YAB_WANT_MUSASHI)
+if (YAB_WANT_MUSASHI AND NOT YAB_PORTS STREQUAL "nx")
 	add_dependencies(yabause m68kmake)
 endif(YAB_WANT_MUSASHI)
 

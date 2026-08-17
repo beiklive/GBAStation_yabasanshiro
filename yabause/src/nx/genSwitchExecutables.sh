@@ -1,10 +1,12 @@
-#!/bin/sh
+#!/usr/bin/env bash
+set -euo pipefail
 
-set -o xtrace
+input_elf=${1:?missing input ELF}
+output_nro=${2:?missing NRO output path}
+output_nso=${3:?missing NSO output path}
 
-mv GBAStationYabaSanshiroStub GBAStationYabaSanshiroStub.elf
-elf2nro GBAStationYabaSanshiroStub.elf ../../GBAStationYabaSanshiroStub.nro
-elf2nso GBAStationYabaSanshiroStub.elf ../../GBAStationYabaSanshiroStub.nso
+elf2nro "$input_elf" "$output_nro"
+elf2nso "$input_elf" "$output_nso"
 
 #mkdir -p exefs
 #cp yabasanshiro.nso ./exefs/main

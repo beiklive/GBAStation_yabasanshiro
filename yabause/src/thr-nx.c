@@ -26,6 +26,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 #include "threads.h"
 
 #include <errno.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <stdlib.h>
 
@@ -45,7 +46,7 @@ int YabThreadInit(){
 int YabThreadStart(unsigned int id, const char * name, void * (*func)(void *), void *arg)
 {
   Result result;
-  if((result = threadCreate(&thread_handle[id],(ThreadFunc)func,arg, 0x10000, 0x2C, -2)) != 0 ){
+  if((result = threadCreate(&thread_handle[id],(ThreadFunc)func,arg, NULL, 0x10000, 0x2C, -2)) != 0 ){
     printf("Fail to create thread\n");
     return -1;    
   }
@@ -85,6 +86,47 @@ void YabThreadSleep(void)
 void YabThreadUSleep( unsigned int stime )
 {
 	svcSleepThread(stime);
+}
+
+int YabNanosleep(u64 ns)
+{
+  svcSleepThread((s64)ns);
+  return 0;
+}
+
+int YabauseThread_IsUseBios(void)
+{
+  return 0;
+}
+
+const char *YabauseThread_getBackupPath(void)
+{
+  return "";
+}
+
+void YabauseThread_setUseBios(int use)
+{
+  (void)use;
+}
+
+void YabauseThread_setBackupPath(const char *path)
+{
+  (void)path;
+}
+
+void YabauseThread_resetPlaymode(void)
+{
+}
+
+void YabauseThread_coldBoot(void)
+{
+}
+
+int YabMakeCleanDir(const char *dirname)
+{
+  if (mkdir(dirname, 0777) == 0 || errno == EEXIST)
+    return 0;
+  return -1;
 }
 
 

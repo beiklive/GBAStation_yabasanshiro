@@ -155,7 +155,6 @@ SH2Interface_struct *SH2CoreList[] = {
 
 PerInterface_struct *PERCoreList[] = {
   &PERDummy,
-  &PERSDLJoy,
   NULL
 };
 
@@ -507,7 +506,7 @@ int main(int argc, char** argv)
 
   int width = 1280;
   int height = 720;
-  VIDCore->Resize(0,0,width,height,0);
+  VIDCore->Resize(0,0,width,height,0,0);
   glViewport(0,0,width,height);
   glClearColor( 0.0f, 0.0f,0.0f,1.0f);
   glClear( GL_COLOR_BUFFER_BIT );
@@ -737,11 +736,15 @@ int main(int argc, char** argv)
   PerSetKey(MAKE_PAD(0,PERPAD_RIGHT_TRIGGER),PERPAD_RIGHT_TRIGGER,padbits);
   PerSetKey(MAKE_PAD(0,PERPAD_LEFT_TRIGGER),PERPAD_LEFT_TRIGGER,padbits);
 
+  PadState pad;
+  padConfigureInput(1, HidNpadStyleSet_NpadStandard);
+  padInitializeDefault(&pad);
+
   while(appletMainLoop()) {
       // Get and process input
-        hidScanInput();
-        const u64 kHeld = hidKeysHeld(CONTROLLER_P1_AUTO);
-        const u64 kDown = hidKeysDown(CONTROLLER_P1_AUTO);
+        padUpdate(&pad);
+        const u64 kHeld = padGetButtons(&pad);
+        const u64 kDown = padGetButtonsDown(&pad);
         if (GBAStation::IsButtonMappingPressed("saturn.hotkey.menu.pad", kDown, HidNpadButton_StickL))
             break;
 
