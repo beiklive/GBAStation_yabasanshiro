@@ -36,10 +36,19 @@ else()
   set(ADDITIONAL_CMAKE_ARGS "")
 endif()
 
+set(LIBCHDR_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/libchdr-prefix/src/libchdr-build")
+set(LIBCHDR_BUILD_BYPRODUCTS
+  "${LIBCHDR_BINARY_DIR}/${CMAKE_STATIC_LIBRARY_PREFIX}chdr-static${CMAKE_STATIC_LIBRARY_SUFFIX}"
+  "${LIBCHDR_BINARY_DIR}/deps/lzma-24.05/${CMAKE_STATIC_LIBRARY_PREFIX}lzma${CMAKE_STATIC_LIBRARY_SUFFIX}"
+  "${LIBCHDR_BINARY_DIR}/deps/zlib-1.3.1/${CMAKE_STATIC_LIBRARY_PREFIX}zlibstatic${CMAKE_STATIC_LIBRARY_SUFFIX}"
+  "${LIBCHDR_BINARY_DIR}/deps/zstd-1.5.6/build/cmake/lib/${CMAKE_STATIC_LIBRARY_PREFIX}zstd${CMAKE_STATIC_LIBRARY_SUFFIX}"
+)
+
 ExternalProject_Add(
   libchdr
   GIT_REPOSITORY "https://github.com/devmiyax/libchdr.git"
   GIT_TAG "5a642352731a5abb1322bf0749b0e1822ebb393a"
+  BINARY_DIR "${LIBCHDR_BINARY_DIR}"
   #PATCH_COMMAND  git apply "${CMAKE_SOURCE_DIR}/CMake/Packages/libchdr.patch"
   CMAKE_ARGS  -DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/libchdr 
               -DCMAKE_BUILD_TYPE:STRING=Release 
@@ -53,6 +62,7 @@ ExternalProject_Add(
   # target.  The Switch cross linker rejects those binaries, while yabause
   # only consumes the archives built by chdr-static above.
   INSTALL_COMMAND ""
+  BUILD_BYPRODUCTS ${LIBCHDR_BUILD_BYPRODUCTS}
 )
 
 ExternalProject_Get_Property(libchdr SOURCE_DIR)

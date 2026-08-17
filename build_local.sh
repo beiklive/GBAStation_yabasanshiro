@@ -4,6 +4,7 @@ set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="${BUILD_DIR:-$ROOT/build-local}"
+TMPDIR="${TMPDIR:-$BUILD_DIR/tmp}"
 JOBS="${JOBS:-$(nproc)}"
 CLEAN=0
 
@@ -40,6 +41,14 @@ done
 if [[ "$CLEAN" == 1 ]]; then
   rm -rf "$BUILD_DIR"
 fi
+
+# devkitA64's Windows-hosted GCC consults TMP/TEMP before TMPDIR. Keep all
+# compiler intermediates inside the selected build directory so MSYS2's
+# installation-wide tmp directory does not need to be writable.
+mkdir -p "$TMPDIR"
+export TMPDIR
+export TMP="$TMPDIR"
+export TEMP="$TMPDIR"
 
 cmake -Wno-dev -S "$ROOT/yabause" -B "$BUILD_DIR" -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE=src/nx/nx-toolchain.cmake \
