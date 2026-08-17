@@ -7,11 +7,15 @@ BUILD_DIR="${BUILD_DIR:-$ROOT/build-local}"
 JOBS="${JOBS:-$(nproc)}"
 CLEAN=0
 
+if [[ "$(uname -o 2>/dev/null || true)" == "Msys" ]]; then
+  export PATH="/usr/bin:/bin:$PATH"
+fi
+
 usage() {
   cat <<'EOF'
 Usage: ./build_local.sh [-j JOBS] [--clean]
 
-Requires MSYS2 UCRT64 with devkitPro Switch tools, CMake, Ninja and Git.
+Requires MSYS2 with devkitPro Switch tools, CMake, Ninja and Git.
 Output: build-local/GBAStationYabaSanshiroStub.nro (or $BUILD_DIR when set).
 EOF
 }
@@ -27,7 +31,7 @@ done
 
 export DEVKITPRO="${DEVKITPRO:-/opt/devkitpro}"
 for tool in cmake ninja git; do
-  command -v "$tool" >/dev/null 2>&1 || { echo "Missing $tool in MSYS2 UCRT64." >&2; exit 1; }
+  command -v "$tool" >/dev/null 2>&1 || { echo "Missing $tool in MSYS2." >&2; exit 1; }
 done
 [[ -x "$DEVKITPRO/devkitA64/bin/aarch64-none-elf-gcc" ]] || {
   echo "Missing devkitPro Switch toolchain under $DEVKITPRO." >&2; exit 1;
