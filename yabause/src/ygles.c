@@ -865,7 +865,9 @@ void VIDOGLVdp1WriteFrameBuffer(u32 type, u32 addr, u32 val ) {
         }
         else {
           spritepixelinfo_struct spi = { 0 };
-          Vdp1GetSpritePixelInfo(Vdp2Regs->SPCTL & 0x0F, &val, &spi);
+          u16 sprite_val = (u16)val;
+          Vdp1GetSpritePixelInfo(Vdp2Regs->SPCTL & 0x0F, &sprite_val, &spi);
+          val = sprite_val;
           _Ygl->CpuWriteFrameBuffer[texaddr] = VDP1COLOR(1, spi.colorcalc, spi.priority, 0, 0, val);
         }
         break;
@@ -4877,6 +4879,5 @@ void YglSetPerlineBuf(YglPerLineInfo * perline, u32 * pbuf, int linecount, int d
   glBindTexture(GL_TEXTURE_2D, 0);
   return;
 }
-
 
 

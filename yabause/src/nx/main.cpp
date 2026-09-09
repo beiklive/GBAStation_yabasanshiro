@@ -36,6 +36,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 #include <SDL2/SDL_opengles2.h>
 
 #include <switch.h>
+#include <switch/services/hid.h>
+#include <time.h>
+#include "yabause.h"
+#include "../gbastation/YabLog.h"
+extern "C" {
+void PlayRecorder_proc(u32) {}
+void PlayRecorder_setPlayMode(const char*, yabauseinit_struct*) {}
+int YabNanosleep(u64 ns) { svcSleepThread(ns); return 0; }
+}
 
 extern "C" {
 #include "../config.h"
@@ -150,7 +159,6 @@ SH2Interface_struct *SH2CoreList[] = {
 
 PerInterface_struct *PERCoreList[] = {
   &PERDummy,
-  &PERSDLJoy,
   NULL
 };
 
@@ -212,7 +220,7 @@ void DrawDebugInfo()
 
 void YuiErrorMsg(const char *string)
 {
-  LOG("%s",string);
+  YabLogWrite("error: %s", string ? string : "(null)");
 }
 
 void YuiSwapBuffers(void)
@@ -228,14 +236,14 @@ void YuiSwapBuffers(void)
 //}
 
 int YuiRevokeOGLOnThisThread(){
-  LOG("revoke thread\n");
+  YabLogWrite("revoke GL thread");
   //SDL_GL_MakeCurrent(wnd,nullptr);
   eglMakeCurrent(s_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
   return 0;
 }
 
 int YuiUseOGLOnThisThread(){
-  LOG("use thread\n");
+  YabLogWrite("use GL thread");
   //SDL_GL_MakeCurrent(wnd,glc);
   eglMakeCurrent(s_display, s_surface, s_surface, s_context);
   return 0;
@@ -314,7 +322,8 @@ static bool initEgl(NWindow* win)
     }
 
     // Initialize the EGL display connection
-    eglInitialize(s_display, NULL, NULL);
+    if (!eglInitialize(s_display, NULL, NULL))
+    { TRACE("EGL initialize failed: %d", eglGetError()); goto _fail0; }
 
     // Get an appropriate EGL framebuffer configuration
     EGLConfig config;
@@ -329,7 +338,8 @@ static bool initEgl(NWindow* win)
         EGL_STENCIL_SIZE, 8,
         EGL_NONE
     };
-    eglChooseConfig(s_display, framebufferAttributeList, &config, 1, &numConfigs);
+    if (!eglChooseConfig(s_display, framebufferAttributeList, &config, 1, &numConfigs))
+    { TRACE("EGL choose config failed: %d", eglGetError()); goto _fail1; }
     if (numConfigs == 0)
     {
         TRACE("No config found! error: %d", eglGetError());
@@ -347,7 +357,7 @@ static bool initEgl(NWindow* win)
     // Create an EGL rendering context
     static const EGLint contextAttributeList[] =
     {
-        EGL_CONTEXT_CLIENT_VERSION, 3, // request OpenGL ES 2.x
+        EGL_CONTEXT_CLIENT_VERSION, 2,
         EGL_NONE
     };
     s_context = eglCreateContext(s_display, config, EGL_NO_CONTEXT, contextAttributeList);
@@ -358,9 +368,12 @@ static bool initEgl(NWindow* win)
     }
 
     // Connect the context to the surface
-    eglMakeCurrent(s_display, s_surface, s_surface, s_context);
+    if (!eglMakeCurrent(s_display, s_surface, s_surface, s_context))
+    { TRACE("EGL make current failed: %d", eglGetError()); goto _fail3; }
     return true;
 
+_fail3:
+    eglDestroyContext(s_display, s_context); s_context = NULL;
 _fail2:
     eglDestroySurface(s_display, s_surface);
     s_surface = NULL;
@@ -394,6 +407,8 @@ static void deinitEgl()
 
 int main(int argc, char** argv)
 {
+  YabLogInit("sdmc:/GBAStation/log/ss.log");
+  YabLogWrite("startup argc=%d", argc);
   //inputmng = InputManager::getInstance();
 
   std::string bckup_dir = "./backup.bin";
@@ -459,21 +474,25 @@ int main(int argc, char** argv)
 	}
 #endif
   if (!initEgl(nwindowGetDefault()))
+  { YabLogWrite("EGL initialization failed"); YabLogShutdown();
       return EXIT_FAILURE;
+  }
 
   printf("context renderer string: \"%s\"\n", glGetString(GL_RENDERER));
   printf("context vendor string: \"%s\"\n", glGetString(GL_VENDOR));
   printf("version string: \"%s\"\n", glGetString(GL_VERSION));
   printf("Extentions: %s\n",glGetString(GL_EXTENSIONS));
 
+  YabLogWrite("EGL renderer=%s version=%s", glGetString(GL_RENDERER), glGetString(GL_VERSION));
   if( yabauseinit() == -1 ) {
       printf("Fail to yabauseinit Bye! (%s)", SDL_GetError() );
+      YabLogWrite("yabauseinit failed"); YabLogShutdown();
       return -1;
   }
 
   int width = 1280;
   int height = 720;
-  VIDCore->Resize(0,0,width,height,0);
+  VIDCore->Resize(0,0,width,height,0,0);
   glViewport(0,0,width,height);
   glClearColor( 0.0f, 0.0f,0.0f,1.0f);
   glClear( GL_COLOR_BUFFER_BIT );
@@ -704,6 +723,7 @@ int main(int argc, char** argv)
   PerSetKey(MAKE_PAD(0,PERPAD_LEFT_TRIGGER),PERPAD_LEFT_TRIGGER,padbits);
 
   while(appletMainLoop()) {
+#if 0
       // Get and process input
         hidScanInput();
         u32 kDown = hidKeysDown(CONTROLLER_P1_AUTO);
@@ -733,10 +753,14 @@ int main(int argc, char** argv)
     //glClear(GL_COLOR_BUFFER_BIT);
     //eglSwapBuffers(s_display, s_surface);
     YabauseExec(); // exec one frame
+#endif
+    YabauseExec();
   }
 #endif  
   YabauseDeInit();
   deinitEgl();
+  YabLogWrite("normal exit");
+  YabLogShutdown();
   return 0;
 }
 

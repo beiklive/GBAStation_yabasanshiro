@@ -24,6 +24,23 @@ elseif(IOS)
     -DPLATFORM=${PLATFORM}
   )
 
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Switch")
+  get_filename_component(TOOL_CHAIN_ABSOLUTE_PATH "${CMAKE_TOOLCHAIN_FILE}" REALPATH BASE_DIR "${CMAKE_BINARY_DIR}")
+  set(ADDITIONAL_CMAKE_ARGS
+    -DCMAKE_TOOLCHAIN_FILE=${TOOL_CHAIN_ABSOLUTE_PATH}
+    -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+    -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+    -DCMAKE_ASM_COMPILER=${CMAKE_ASM_COMPILER}
+    -DCMAKE_C_FLAGS=${CMAKE_C_FLAGS}
+    -DCMAKE_CXX_FLAGS=${CMAKE_CXX_FLAGS}
+  )
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Switch")
+set(LIBCHDR_LIBRARIES
+ ${BINARY_DIR}/libchdr-static.a
+ ${BINARY_DIR}/deps/lzma-24.05/liblzma.a
+ ${BINARY_DIR}/deps/zlib-1.3.1/libzlibstatic.a
+ ${BINARY_DIR}/deps/zstd-1.5.6/build/cmake/lib/libzstd.a)
+set(LIBCHDR_LIB_DIR ${BINARY_DIR})
 else()
   set(ADDITIONAL_CMAKE_ARGS "")
 endif()
@@ -32,9 +49,12 @@ ExternalProject_Add(
   libchdr
   GIT_REPOSITORY "https://github.com/devmiyax/libchdr.git"
   GIT_TAG "5a642352731a5abb1322bf0749b0e1822ebb393a"
+  PATCH_COMMAND ${CMAKE_COMMAND} -E env sh -c "sed -i.bak '/add_subdirectory(tests)/d' CMakeLists.txt"
   #PATCH_COMMAND  git apply "${CMAKE_SOURCE_DIR}/CMake/Packages/libchdr.patch"
   CMAKE_ARGS  -DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/libchdr 
-              -DCMAKE_BUILD_TYPE:STRING=Release 
+              -DCMAKE_BUILD_TYPE:STRING=Release
+              -DBUILD_SHARED_LIBS=OFF -DINSTALL_STATIC_LIBS=ON
+              -DBUILD_TESTING=OFF -DBUILD_TESTS=OFF -DCHDR_BUILD_TESTS=OFF
               -DCMAKE_CXX_FLAGS=${CMAKE_CXX_FLAGS}
               -DCMAKE_C_FLAGS=${CMAKE_C_FLAGS}
               ${ADDITIONAL_CMAKE_ARGS}
@@ -60,6 +80,9 @@ set(LIBCHDR_LIBRARIES
  ${CMAKE_STATIC_LIBRARY_PREFIX}zstd${CMAKE_STATIC_LIBRARY_SUFFIX}
  )
  set( LIBCHDR_LIB_DIR ${BINARY_DIR} ${BINARY_DIR}/deps/zstd-1.5.6/build/cmake/lib/ ${BINARY_DIR}/deps/lzma-24.05/ )
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Switch")
+set(LIBCHDR_LIBRARIES ${BINARY_DIR}/libchdr-static.a ${BINARY_DIR}/deps/lzma-24.05/liblzma.a ${BINARY_DIR}/deps/zlib-1.3.1/libzlibstatic.a ${BINARY_DIR}/deps/zstd-1.5.6/build/cmake/lib/libzstd.a)
+set(LIBCHDR_LIB_DIR ${BINARY_DIR})
 else()
 set(LIBCHDR_LIBRARIES  
  ${BINARY_DIR}/${CMAKE_STATIC_LIBRARY_PREFIX}chdr-static${CMAKE_STATIC_LIBRARY_SUFFIX}

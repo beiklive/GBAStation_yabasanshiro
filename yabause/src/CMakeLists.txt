@@ -63,6 +63,10 @@ set(yabause_SOURCES
 	cd-web.cpp
 	PlayRecorder.cpp
 	sh2cache.c )
+	if (CMAKE_SYSTEM_NAME STREQUAL "Switch")
+		list(REMOVE_ITEM yabause_SOURCES cd-web.cpp)
+		list(REMOVE_ITEM yabause_SOURCES PlayRecorder.cpp)
+	endif()
 	add_definitions(-DIMPROVED_SAVESTATES)
 
 if (ANDROID)
@@ -1124,6 +1128,3 @@ option(YAB_TESTS "Build test programs for cores" OFF)
 if (YAB_TESTS)
 	add_subdirectory("tools")
 endif()
-
-
-

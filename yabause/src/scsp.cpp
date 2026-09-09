@@ -167,8 +167,9 @@ static int g_scsp_sync_count_per_frame = 1;
 static int g_scsp_main_mode = 0;
 
 #include "sh2core.h"
+#include <climits>
 
-std::atomic<u32> m68kcycle = 0;
+std::atomic<u32> m68kcycle{0};
 
 extern "C" {
   extern volatile u64 saved_m68k_cycles;
@@ -5675,7 +5676,7 @@ extern "C" void * ScspAsynMainRealtime(void * p) {
       s64 initbefore = 0;
       s64 checktime = 0;
       s64 sleepchecktime = 0;
-      m68kcycle = 0;
+        m68kcycle.store(0);
       sh2_read_req = 0;
       do {
         now = YabauseGetTicks();

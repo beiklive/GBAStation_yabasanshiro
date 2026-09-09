@@ -33,7 +33,7 @@ set(CMAKE_LINKER ${DEVKITPRO_BIN}${PREFIX}ld )
 set( ARCH "-march=armv8-a -mtune=cortex-a57 -mtp=soft -fPIE -D__SWITCH__" )
 
 set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -Wall -O2 -ffunction-sections ${ARCH}")
-set (CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} ${CMAKE_CXX_FLAGS} -fno-rtti -fno-exceptions")
+set (CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} ${CMAKE_CXX_FLAGS} -fno-rtti")
 
 set (CMAKE_C_LINK_FLAGS "-specs=${DEVKITPRO}/libnx/switch.specs ${CMAKE_C_LINK_FLAGS}")
 #set (CMAKE_CXX_LINK_FLAGS "-specs=${DEVKITPRO}/libnx/switch.specs ${CMAKE_CXX_LINK_FLAGS}")

@@ -45,7 +45,7 @@ int YabThreadInit(){
 int YabThreadStart(unsigned int id, const char * name, void * (*func)(void *), void *arg)
 {
   Result result;
-  if((result = threadCreate(&thread_handle[id],(ThreadFunc)func,arg, 0x10000, 0x2C, -2)) != 0 ){
+  if((result = threadCreate(&thread_handle[id],(ThreadFunc)func,arg, NULL, 0x10000, 0x2C, -2)) != 0 ){
     printf("Fail to create thread\n");
     return -1;    
   }

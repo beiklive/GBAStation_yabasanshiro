@@ -7,9 +7,6 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 #add_subdirectory(pugixml)
 #add_subdirectory(nanogui-sdl)
 
-include( ../glfw/external_zlib.cmake )
-include( ../glfw/external_libpng.cmake )
-
 #------------------------------------------------------------------------------
 # nlohmann/json
 #  * sets EXTERNAL_JSON_INCLUDE_DIR 
@@ -21,19 +18,23 @@ set(PORT_LIBRARIES EGL GLESv2 glapi drm_nouveau nx m SDL2  )
 
 set(yabause_nx_SOURCES
 	main.cpp
+	../gbastation/YabLog.c
+	../thr-nx.c
 	#InputManager.h
 	#InputManager.cpp
 	#InputConfig.h
 	#InputConfig.cpp
 	#MenuScreen.h
 	#MenuScreen.cpp
-) 
+)
+include_directories( ../gbastation )
 
 
 include_directories( ${YABAUSE_INCLUDE_DIR} ${PORT_INCLUDE_DIRS} ${Boost_INCLUDE_DIR} "nanogui-sdl/include" "nanogui-sdl/ext/eigen" )
 link_directories( /opt/devkitpro/devkitA64/lib/ /opt/devkitpro/libnx/lib/ /opt/devkitpro/portlibs/switch/lib/  ) 
 add_executable(yabause-nx ${yabause_nx_SOURCES})
-target_link_libraries(yabause-nx yabause ${YABAUSE_LIBRARIES} ${PORT_LIBRARIES}  )
+add_dependencies(yabause-nx libchdr)
+target_link_libraries(yabause-nx yabause ${LIBCHDR_LIBRARIES} ${YABAUSE_LIBRARIES} ${PORT_LIBRARIES} stdc++fs z)
 
 set( CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -specs=/opt/devkitpro/libnx/switch.specs -g -Wl,-Map,memory.map" )
 
