@@ -427,6 +427,8 @@ void NvgUiDrawBrowser(NVGcontext* vg, const DirBrowser& browser, const UiFontSet
   push_text(" 仅游戏 ", kTextSub);
   push_key(SwitchIcon::kX, "X");
   push_text(" 排序 ", kTextSub);
+  push_key(SwitchIcon::kMinus, "-");
+  push_text(" 设置 ", kTextSub);
   push_key(SwitchIcon::kPlus, "+");
   push_text(" 退出", kTextSub);
 
@@ -478,6 +480,117 @@ void NvgUiDrawLaunchOverlay(NVGcontext* vg, const UiFontSet& fonts, int fb_w, in
        "正在启动 Saturn");
   Text(vg, fonts.text, t.item_size, cx, cy + 38.0f * t.scale,
        NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE, kTextSub, game_name ? game_name : "");
+
+  nvgEndFrame(vg);
+}
+
+void NvgUiDrawSettings(NVGcontext* vg, const std::vector<SettingItem>& items,
+                       const UiFontSet& fonts, int fb_w, int fb_h, int cursor, int scroll,
+                       const char* status)
+{
+  const Theme t = MakeTheme(fb_h);
+  nvgBeginFrame(vg, fb_w, fb_h, 1.0f);
+
+  nvgFillColor(vg, Col(kBackground));
+  nvgBeginPath(vg);
+  nvgRect(vg, 0, 0, fb_w, fb_h);
+  nvgFill(vg);
+
+  // Title bar.
+  RoundedBox(vg, 0, 0, fb_w, t.path_h, 0, kPanel);
+  Text(vg, fonts.text, t.path_size, t.margin, t.path_h / 2.0f,
+       NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE, kText, "设置");
+
+  float list_top = t.path_h;
+  if (status && status[0])
+  {
+    Text(vg, fonts.text, t.status_size, fb_w / 2.0f, t.path_h + t.status_size / 2.0f,
+         NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE, kAccent, status);
+    list_top += t.status_size + 6.0f * t.scale;
+  }
+
+  const float list_bottom = fb_h - t.footer_h;
+  const size_t rows_visible = static_cast<size_t>((list_bottom - list_top) / t.row_h);
+  const size_t total = items.size();
+  const int safe_cursor = cursor < 0 ? 0 : static_cast<int>(cursor);
+  size_t first = scroll < 0 ? 0 : static_cast<size_t>(scroll);
+  if (first + rows_visible > total && total > rows_visible)
+    first = total - rows_visible;
+
+  for (size_t i = 0; i < rows_visible && first + i < total; ++i)
+  {
+    const SettingItem& item = items[first + i];
+    const float y = list_top + static_cast<float>(i) * t.row_h;
+    const float mid = y + t.row_h / 2.0f;
+    const bool selected = (static_cast<int>(first + i) == safe_cursor);
+
+    if (selected)
+      RoundedBox(vg, t.margin, y + 3.0f * t.scale, fb_w - 2 * t.margin,
+                 t.row_h - 6.0f * t.scale, 2.0f * t.scale, kSelection);
+
+    const RGBA label_color = selected ? kTextOnAccent : (item.editable ? kText : kTextWeak);
+    TextEllipsis(vg, fonts.text, t.item_size, t.margin + t.pad, mid,
+                 NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE, label_color, item.label,
+                 fb_w * 0.55f);
+
+    const RGBA value_color = selected ? kTextOnAccent : (item.editable ? kGameColor : kTextWeak);
+    const std::string value = item.Display();
+    const float value_max = fb_w * 0.4f;
+    TextEllipsis(vg, fonts.text, t.item_size, fb_w - t.margin - t.pad, mid,
+                 NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE, value_color, value, value_max);
+  }
+
+  // Footer hints.
+  RoundedBox(vg, 0, fb_h - t.footer_h, fb_w, t.footer_h, 0, kPanel);
+  const float fy = fb_h - t.footer_h / 2.0f;
+
+  struct HintPart
+  {
+    int font;
+    std::string text;
+    RGBA color;
+  };
+  std::vector<HintPart> parts;
+  auto push_glyph = [&](int font, uint32_t cp) {
+    HintPart p;
+    p.font = font;
+    AppendUtf8(p.text, cp);
+    p.color = kTextSub;
+    parts.push_back(p);
+  };
+  auto push_text = [&](const char* s) {
+    HintPart p;
+    p.font = fonts.text;
+    p.text = s;
+    p.color = kTextSub;
+    parts.push_back(p);
+  };
+  auto push_key = [&](uint32_t cp, const char* fallback) {
+    if (fonts.icons_switch >= 0)
+      push_glyph(fonts.icons_switch, cp);
+    else
+      push_text(fallback);
+  };
+
+  push_key(SwitchIcon::kUp, "^");
+  push_key(SwitchIcon::kDown, "v");
+  push_text("选择 ");
+  push_key(SwitchIcon::kLeft, "<");
+  push_key(SwitchIcon::kRight, ">");
+  push_text(" 调整 ");
+  push_key(SwitchIcon::kA, "A");
+  push_text(" 修改 ");
+  push_key(SwitchIcon::kB, "B");
+  push_text(" 返回 ");
+
+  float x = t.margin;
+  for (const HintPart& part : parts)
+  {
+    const float width = TextWidth(vg, part.font, t.footer_size, part.text.c_str());
+    Text(vg, part.font, t.footer_size, x, fy, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE, part.color,
+         part.text.c_str());
+    x += width + (part.font == fonts.text ? 2.0f * t.scale : 4.0f * t.scale);
+  }
 
   nvgEndFrame(vg);
 }

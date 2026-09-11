@@ -60,6 +60,7 @@ set(yabause_desktop_SOURCES
   ../gbastation/Browser.cpp
   ../gbastation/NvgUi.cpp
   ../gbastation/UiFont.cpp
+  ../gbastation/Settings.cpp
 )
 
 # Link against the archives produced by the libchdr ExternalProject by name

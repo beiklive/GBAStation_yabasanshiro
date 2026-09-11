@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <map>
 #include <string>
 
 namespace GBAStation
@@ -25,6 +26,10 @@ std::string FindSaturnBios();
 std::string BackupPathForRom(const std::string& rom_path);
 std::string StatePathForRom(const std::string& rom_path, unsigned slot);
 std::string ReadConfigValue(const char* key, const char* fallback = "");
+
+// Full config map and the config file path (for the settings page).
+std::map<std::string, std::string> ReadConfigMap();
+std::string ConfigPath();
 
 // Config values use the same PAD_* names written by BeikLiveStation.
 // The bit masks are libnx HidNpadButton values and are only meaningful on

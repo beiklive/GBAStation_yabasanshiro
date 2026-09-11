@@ -25,6 +25,8 @@
 #include "../gbastation/Browser.h"
 #include "../gbastation/NvgUi.h"
 #include "../gbastation/UiFont.h"
+#include "../gbastation/UiInput.h"
+#include "../gbastation/Settings.h"
 
 extern "C" {
 #include "config.h"
@@ -357,15 +359,15 @@ void ReadSaturnInput(SaturnInput& input)
   input.down = keys[SDL_SCANCODE_DOWN] != 0;
   input.left = keys[SDL_SCANCODE_LEFT] != 0;
   input.right = keys[SDL_SCANCODE_RIGHT] != 0;
-  input.a = keys[SDL_SCANCODE_J] != 0;
-  input.b = keys[SDL_SCANCODE_K] != 0;
-  input.c = keys[SDL_SCANCODE_L] != 0;
-  input.x = keys[SDL_SCANCODE_U] != 0;
-  input.y = keys[SDL_SCANCODE_I] != 0;
-  input.z = keys[SDL_SCANCODE_O] != 0;
-  input.l = keys[SDL_SCANCODE_1] != 0;
-  input.r = keys[SDL_SCANCODE_2] != 0;
-  input.start = keys[SDL_SCANCODE_RETURN] != 0;
+  input.a = keys[SDL_SCANCODE_A] != 0;
+  input.b = keys[SDL_SCANCODE_B] != 0;
+  input.c = keys[SDL_SCANCODE_C] != 0;
+  input.x = keys[SDL_SCANCODE_X] != 0;
+  input.y = keys[SDL_SCANCODE_Y] != 0;
+  input.z = keys[SDL_SCANCODE_Z] != 0;
+  input.l = keys[SDL_SCANCODE_Q] != 0;
+  input.r = keys[SDL_SCANCODE_E] != 0;
+  input.start = keys[SDL_SCANCODE_SPACE] != 0;
 
   SDL_Event event;
   while (SDL_PollEvent(&event))
@@ -577,39 +579,53 @@ void ShowLaunchOverlay(const std::string& rom)
   SDL_GL_SwapWindow(g_window);
 }
 
-struct BrowserKeys
-{
-  bool up = false, down = false;
-  bool confirm = false;
-  bool back = false;
-  bool toggle_games = false;
-  bool cycle_sort = false;
-  bool quit = false;
-};
-
-void ReadBrowserKeys(BrowserKeys& keys)
+// macOS keyboard mapping:
+//   arrows = d-pad, A/B/X/Y = A/B/X/Y, Delete = Minus, Enter = Plus.
+void ReadUiInput(GbBoot::UiInputState& in)
 {
   const Uint8* state = SDL_GetKeyboardState(nullptr);
-  static bool prev_confirm = false;
-  static bool prev_back = false;
-  static bool prev_games = false;
-  static bool prev_sort = false;
-  keys = BrowserKeys{};
-  keys.up = state[SDL_SCANCODE_UP] != 0;
-  keys.down = state[SDL_SCANCODE_DOWN] != 0;
+  static bool pA = false, pB = false, pX = false, pY = false;
+  static bool pMinus = false, pPlus = false;
+  static bool pUp = false, pDown = false, pLeft = false, pRight = false;
 
-  const bool confirm_now = state[SDL_SCANCODE_RETURN] != 0 || state[SDL_SCANCODE_RIGHT] != 0;
-  const bool back_now = state[SDL_SCANCODE_BACKSPACE] != 0 || state[SDL_SCANCODE_LEFT] != 0;
-  const bool games_now = state[SDL_SCANCODE_Y] != 0;
-  const bool sort_now = state[SDL_SCANCODE_X] != 0;
-  keys.confirm = confirm_now && !prev_confirm;
-  keys.back = back_now && !prev_back;
-  keys.toggle_games = games_now && !prev_games;
-  keys.cycle_sort = sort_now && !prev_sort;
-  prev_confirm = confirm_now;
-  prev_back = back_now;
-  prev_games = games_now;
-  prev_sort = sort_now;
+  in = GbBoot::UiInputState{};
+
+  const bool up = state[SDL_SCANCODE_UP] != 0;
+  const bool down = state[SDL_SCANCODE_DOWN] != 0;
+  const bool left = state[SDL_SCANCODE_LEFT] != 0;
+  const bool right = state[SDL_SCANCODE_RIGHT] != 0;
+  const bool a = state[SDL_SCANCODE_A] != 0;
+  const bool b = state[SDL_SCANCODE_B] != 0;
+  const bool x = state[SDL_SCANCODE_X] != 0;
+  const bool y = state[SDL_SCANCODE_Y] != 0;
+  const bool minus = state[SDL_SCANCODE_DELETE] != 0;
+  const bool plus = state[SDL_SCANCODE_RETURN] != 0 || state[SDL_SCANCODE_KP_ENTER] != 0;
+
+  in.up = up;
+  in.down = down;
+  in.left = left;
+  in.right = right;
+  in.a = a && !pA;
+  in.b = b && !pB;
+  in.x = x && !pX;
+  in.y = y && !pY;
+  in.minus = minus && !pMinus;
+  in.plus = plus && !pPlus;
+  in.upPressed = up && !pUp;
+  in.downPressed = down && !pDown;
+  in.leftPressed = left && !pLeft;
+  in.rightPressed = right && !pRight;
+
+  pA = a;
+  pB = b;
+  pX = x;
+  pY = y;
+  pMinus = minus;
+  pPlus = plus;
+  pUp = up;
+  pDown = down;
+  pLeft = left;
+  pRight = right;
 
   SDL_Event event;
   while (SDL_PollEvent(&event))
@@ -628,7 +644,7 @@ void ReadBrowserKeys(BrowserKeys& keys)
         break;
       case SDL_KEYDOWN:
         if (event.key.keysym.scancode == SDL_SCANCODE_ESCAPE)
-          keys.quit = true;
+          g_quit = true;
         break;
       default:
         break;
@@ -665,6 +681,9 @@ void UpdateRepeat(bool held_now, Uint32 now, RepeatState& state, bool& fire)
 
 int RunBootPage()
 {
+  const std::map<std::string, std::string> config = GBAStation::ReadConfigMap();
+  const std::string config_path = GBAStation::ConfigPath();
+
   GbBoot::DirBrowser browser;
   std::string status;
 
@@ -684,51 +703,98 @@ int RunBootPage()
 
   EnsureUi();
 
+  bool settings_mode = false;
+  std::vector<GbBoot::SettingItem> settings;
+  int settings_cursor = 0;
+  int settings_scroll = 0;
+  std::string settings_status;
+
   while (!g_quit)
   {
-    BrowserKeys keys;
-    ReadBrowserKeys(keys);
+    GbBoot::UiInputState in;
+    ReadUiInput(in);
 
-    if (keys.quit)
-      break;
-
-    if (keys.toggle_games)
-      browser.SetGamesOnly(!browser.GamesOnly());
-    if (keys.cycle_sort)
-      browser.CycleSort();
+    if (in.plus)
+      break;  // exit
 
     const Uint32 now = SDL_GetTicks();
     static RepeatState repeat_up;
     static RepeatState repeat_down;
     bool up = false;
     bool down = false;
-    UpdateRepeat(keys.up, now, repeat_up, up);
-    UpdateRepeat(keys.down, now, repeat_down, down);
-    if (up) browser.MoveCursor(-1);
-    if (down) browser.MoveCursor(1);
+    UpdateRepeat(in.up, now, repeat_up, up);
+    UpdateRepeat(in.down, now, repeat_down, down);
 
-    if (keys.confirm && browser.Activate())
+    if (!settings_mode)
     {
-      std::string rom = browser.Selected();
-      ResetGlStateForUi();
-      ShowLaunchOverlay(rom);
-      const int outcome = BootAndRunGame(rom);
-      if (outcome != 0 || g_quit)
-        break;
-      std::string open_err;
-      browser.Open(GbBoot::ParentOf(rom), open_err);
-      status.clear();
+      if (up) browser.MoveCursor(-1);
+      if (down) browser.MoveCursor(1);
+      if (in.x) browser.CycleSort();
+      if (in.y) browser.SetGamesOnly(!browser.GamesOnly());
+      if (in.minus)
+      {
+        if (settings.empty())
+          settings = GbBoot::BuildCoreSettings(config);
+        settings_mode = true;
+        settings_status.clear();
+      }
+
+      if (in.a && browser.Activate())
+      {
+        std::string rom = browser.Selected();
+        ResetGlStateForUi();
+        ShowLaunchOverlay(rom);
+        const int outcome = BootAndRunGame(rom);
+        if (outcome != 0 || g_quit)
+          break;
+        std::string open_err;
+        browser.Open(GbBoot::ParentOf(rom), open_err);
+        status.clear();
+      }
+      if (in.b)
+        browser.GoParent();
     }
-    if (keys.back)
-      browser.GoParent();
+    else
+    {
+      const int count = static_cast<int>(settings.size());
+      if (count > 0)
+      {
+        if (up) settings_cursor = (settings_cursor - 1 + count) % count;
+        if (down) settings_cursor = (settings_cursor + 1) % count;
+        if (in.leftPressed || in.rightPressed || in.a)
+        {
+          const int direction = in.leftPressed ? -1 : 1;
+          GbBoot::ChangeSetting(settings[settings_cursor], direction);
+          settings_status = GbBoot::SaveSettings(config_path, settings)
+                                ? "已保存,重启后生效"
+                                : "保存失败";
+        }
+      }
+      if (in.b || in.minus)
+        settings_mode = false;
+
+      const int rows = static_cast<int>(g_win_h / 46);
+      if (rows > 0)
+      {
+        if (settings_cursor < settings_scroll)
+          settings_scroll = settings_cursor;
+        else if (settings_cursor >= settings_scroll + rows)
+          settings_scroll = settings_cursor - rows + 1;
+      }
+    }
 
     glViewport(0, 0, g_win_w, g_win_h);
     glClearColor(0.05f, 0.05f, 0.06f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
     if (g_ui_vg)
     {
-      GbBoot::NvgUiDrawBrowser(g_ui_vg, browser, g_ui_fonts, g_win_w, g_win_h,
-                               status.empty() ? nullptr : status.c_str());
+      if (settings_mode)
+        GbBoot::NvgUiDrawSettings(g_ui_vg, settings, g_ui_fonts, g_win_w, g_win_h,
+                                  settings_cursor, settings_scroll,
+                                  settings_status.empty() ? nullptr : settings_status.c_str());
+      else
+        GbBoot::NvgUiDrawBrowser(g_ui_vg, browser, g_ui_fonts, g_win_w, g_win_h,
+                                 status.empty() ? nullptr : status.c_str());
     }
     SDL_GL_SwapWindow(g_window);
     SDL_Delay(16);

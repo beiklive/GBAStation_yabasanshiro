@@ -46,6 +46,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 #include "../gbastation/Browser.h"
 #include "../gbastation/NvgUi.h"
 #include "../gbastation/UiFont.h"
+#include "../gbastation/UiInput.h"
+#include "../gbastation/Settings.h"
 #include "nanovg.h"
 #define NANOVG_GLES3 1
 #include "nanovg_gl.h"
@@ -613,7 +615,9 @@ void UpdateRepeat(bool held_now, uint64_t now_ms, RepeatKey& state, int& action)
 // Shows the boot page and blocks until a game is picked (returns true, out_rom
 // filled) or the user quits (returns false).  Cleans up the UI GL context.
 bool RunBootPage(std::string& out_rom, const std::string& font_dir,
-                 const std::string& rom_root)
+                 const std::string& rom_root,
+                 const std::map<std::string, std::string>& config,
+                 const std::string& config_path)
 {
   int fb_w = 1280;
   int fb_h = 720;
@@ -645,12 +649,12 @@ bool RunBootPage(std::string& out_rom, const std::string& font_dir,
   }
   YabLogWrite("bootpage root=%s entries=%u", rom_root.c_str(),
               static_cast<unsigned>(browser.Entries().size()));
-  for (size_t i = 0; i < browser.Entries().size() && i < 8; ++i)
-  {
-    const GbBoot::DirEntry& e = browser.Entries()[i];
-    YabLogWrite("bootpage entry[%u] %s dir=%d game=%d", static_cast<unsigned>(i),
-                e.name.c_str(), e.is_dir ? 1 : 0, e.is_game ? 1 : 0);
-  }
+
+  bool settings_mode = false;
+  std::vector<GbBoot::SettingItem> settings;
+  int settings_cursor = 0;
+  int settings_scroll = 0;
+  std::string settings_status;
 
   bool selected = false;
   while (appletMainLoop())
@@ -662,42 +666,104 @@ bool RunBootPage(std::string& out_rom, const std::string& font_dir,
     const u64 kHeld = padGetButtons(&pad);
     const u64 kDown = padGetButtonsDown(&pad);
 
-    if (kDown & HidNpadButton_StickL)
-      break;  // exit to host / hbmenu
+    GbBoot::UiInputState in;
+    in.up = (kHeld & HidNpadButton_Up) != 0;
+    in.down = (kHeld & HidNpadButton_Down) != 0;
+    in.left = (kHeld & HidNpadButton_Left) != 0;
+    in.right = (kHeld & HidNpadButton_Right) != 0;
+    in.a = (kDown & HidNpadButton_A) != 0;
+    in.b = (kDown & HidNpadButton_B) != 0;
+    in.x = (kDown & HidNpadButton_X) != 0;
+    in.y = (kDown & HidNpadButton_Y) != 0;
+    in.minus = (kDown & HidNpadButton_Minus) != 0;
+    in.plus = (kDown & HidNpadButton_Plus) != 0;
+    in.upPressed = (kDown & HidNpadButton_Up) != 0;
+    in.downPressed = (kDown & HidNpadButton_Down) != 0;
+    in.leftPressed = (kDown & HidNpadButton_Left) != 0;
+    in.rightPressed = (kDown & HidNpadButton_Right) != 0;
 
-    if (kDown & HidNpadButton_Y)
-      browser.SetGamesOnly(!browser.GamesOnly());
-    if (kDown & HidNpadButton_X)
-      browser.CycleSort();
+    // Exit: Plus (or L stick press on Switch).
+    if (in.plus || (kDown & HidNpadButton_StickL))
+      break;
 
     const uint64_t now_ms = TickNowMs();
     static RepeatKey repeat_up;
     static RepeatKey repeat_down;
     int action_up = 0;
     int action_down = 0;
-    UpdateRepeat((kHeld & HidNpadButton_Up) != 0, now_ms, repeat_up, action_up);
-    UpdateRepeat((kHeld & HidNpadButton_Down) != 0, now_ms, repeat_down, action_down);
-    if (action_up)
-      browser.MoveCursor(-1);
-    if (action_down)
-      browser.MoveCursor(1);
+    UpdateRepeat(in.up, now_ms, repeat_up, action_up);
+    UpdateRepeat(in.down, now_ms, repeat_down, action_down);
 
-    const bool confirm = (kDown & (HidNpadButton_A | HidNpadButton_Right)) != 0;
-    const bool back = (kDown & (HidNpadButton_B | HidNpadButton_Left)) != 0;
-
-    if (confirm && browser.Activate())
+    if (!settings_mode)
     {
-      out_rom = browser.Selected();
-      selected = true;
-      break;
+      if (action_up)
+        browser.MoveCursor(-1);
+      if (action_down)
+        browser.MoveCursor(1);
+      if (in.x)
+        browser.CycleSort();
+      if (in.y)
+        browser.SetGamesOnly(!browser.GamesOnly());
+      if (in.minus)
+      {
+        if (settings.empty())
+          settings = GbBoot::BuildCoreSettings(config);
+        settings_mode = true;
+        settings_status.clear();
+      }
+      if (in.a && browser.Activate())
+      {
+        out_rom = browser.Selected();
+        selected = true;
+        break;
+      }
+      if (in.b)
+        browser.GoParent();
     }
-    if (back)
-      browser.GoParent();
+    else
+    {
+      const int count = static_cast<int>(settings.size());
+      if (count > 0)
+      {
+        if (action_up)
+          settings_cursor = (settings_cursor - 1 + count) % count;
+        if (action_down)
+          settings_cursor = (settings_cursor + 1) % count;
+
+        if (in.leftPressed || in.rightPressed || in.a)
+        {
+          const int direction = in.leftPressed ? -1 : 1;
+          GbBoot::ChangeSetting(settings[settings_cursor], direction);
+          if (GbBoot::SaveSettings(config_path, settings))
+            settings_status = "已保存,重启后生效";
+          else
+            settings_status = "保存失败";
+        }
+      }
+      if (in.b || in.minus)
+        settings_mode = false;
+
+      // Keep the cursor visible.
+      const float scale = fb_h / 720.0f;
+      const int rows = static_cast<int>((fb_h - 98.0f * scale) / (46.0f * scale));
+      if (rows > 0)
+      {
+        if (settings_cursor < settings_scroll)
+          settings_scroll = settings_cursor;
+        else if (settings_cursor >= settings_scroll + rows)
+          settings_scroll = settings_cursor - rows + 1;
+      }
+    }
 
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
-    GbBoot::NvgUiDrawBrowser(g_ui_vg, browser, g_ui_fonts, fb_w, fb_h,
-                             status.empty() ? nullptr : status.c_str());
+    if (settings_mode)
+      GbBoot::NvgUiDrawSettings(g_ui_vg, settings, g_ui_fonts, fb_w, fb_h,
+                                settings_cursor, settings_scroll,
+                                settings_status.empty() ? nullptr : settings_status.c_str());
+    else
+      GbBoot::NvgUiDrawBrowser(g_ui_vg, browser, g_ui_fonts, fb_w, fb_h,
+                               status.empty() ? nullptr : status.c_str());
     eglSwapBuffers(s_display, s_surface);
     svcSleepThread(16ULL * 1000000ULL);
   }
@@ -876,7 +942,8 @@ int main(int argc, char** argv)
     const std::string fontDir = ConfigValue(config, "core.saturn.font_dir",
         ConfigValue(config, "core.saturn.fontDir", "sdmc:/GBAStation/font"));
     std::string picked;
-    if (!RunBootPage(picked, fontDir, romRoot)) {
+    if (!RunBootPage(picked, fontDir, romRoot, config,
+                     "sdmc:/GBAStation/config/config.cfg")) {
       deinitEgl();
       ReturnToLauncher(return_nro, session_token);
       YabLogWrite("bootpage quit, exit");

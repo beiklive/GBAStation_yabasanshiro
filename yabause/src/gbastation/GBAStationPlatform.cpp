@@ -388,6 +388,16 @@ std::string ReadConfigValue(const char* key, const char* fallback)
   return it == values.end() ? std::string(fallback) : it->second;
 }
 
+std::map<std::string, std::string> ReadConfigMap()
+{
+  return ReadConfig();
+}
+
+std::string ConfigPath()
+{
+  return DataRoot() + "/config/config.cfg";
+}
+
 #if defined(NX)
 uint64_t ReadButtonMapping(const char* key, uint64_t fallback)
 {

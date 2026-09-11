@@ -22,6 +22,7 @@ set(yabause_nx_SOURCES
 	../gbastation/Browser.cpp
 	../gbastation/NvgUi.cpp
 	../gbastation/UiFont.cpp
+	../gbastation/Settings.cpp
 	../thr-nx.c
 	#InputManager.h
 	#InputManager.cpp

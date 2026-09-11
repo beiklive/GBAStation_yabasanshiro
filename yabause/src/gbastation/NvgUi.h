@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Browser.h"
+#include "Settings.h"
 #include "UiFont.h"
 
 struct NVGcontext;
@@ -21,4 +22,9 @@ void NvgUiDrawBrowser(NVGcontext* vg, const DirBrowser& browser, const UiFontSet
 // Full screen "launching a game" overlay; draw and swap once before booting.
 void NvgUiDrawLaunchOverlay(NVGcontext* vg, const UiFontSet& fonts, int fb_w, int fb_h,
                             const char* game_name);
+
+// Settings page: list of core settings with the current value on the right.
+void NvgUiDrawSettings(NVGcontext* vg, const std::vector<SettingItem>& items,
+                       const UiFontSet& fonts, int fb_w, int fb_h, int cursor, int scroll,
+                       const char* status);
 }
