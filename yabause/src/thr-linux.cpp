@@ -56,12 +56,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 #include <sys/types.h>
 
 
-#if GCC_VERSION < 9
-#include <experimental/filesystem>
-namespace fs = std::experimental::filesystem;
-#else
+#if defined(ARCH_IS_MACOSX) || (GCC_VERSION >= 9)
 #include <filesystem>
 namespace fs = std::filesystem;
+#else
+#include <experimental/filesystem>
+namespace fs = std::experimental::filesystem;
 #endif
 
 #ifdef ARCH_IS_MACOSX

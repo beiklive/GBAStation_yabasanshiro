@@ -72,6 +72,65 @@ static INLINE u32 COLSATSTRIPPRIORITY(u32 pixel) { return (0xFF000000 | pixel); 
 #endif
 
 
+// When no GL renderer is compiled (plain software build), the free function
+// Vdp2ColorRamGetColor() normally provided by vidogl.c is unavailable.  Provide
+// an equivalent implementation so the software paths can link on all hosts.
+#if !defined(HAVE_LIBGL) && !defined(__ANDROID__) && !defined(IOS) && !defined(NX)
+#ifdef WORDS_BIGENDIAN
+#define SAT2YAB1(alpha,temp)      (alpha | (temp & 0x7C00) << 1 | (temp & 0x3E0) << 14 | (temp & 0x1F) << 27)
+#define SAT2YAB2(alpha,dot1,dot2) ((dot2 & 0xFF << 24) | ((dot2 & 0xFF00) << 8) | ((dot1 & 0xFF) << 8) | alpha)
+#else
+#define SAT2YAB1(alpha,temp)      (alpha << 24 | (temp & 0x1F) << 3 | (temp & 0x3E0) << 6 | (temp & 0x7C00) << 9)
+#define SAT2YAB2(alpha,dot1,dot2) (alpha << 24 | ((dot1 & 0xFF) << 16) | (dot2 & 0xFF00) | (dot2 & 0xFF))
+#endif
+static u16 Vdp2ColorRamGetColorRaw(u32 colorindex)
+{
+   switch (Vdp2Internal.ColorMode)
+   {
+      case 0:
+      case 1:
+      {
+         colorindex <<= 1;
+         return T2ReadWord(Vdp2ColorRam, colorindex & 0xFFF);
+      }
+      case 2:
+      {
+         colorindex <<= 2;
+         colorindex &= 0xFFF;
+         return T2ReadWord(Vdp2ColorRam, colorindex);
+      }
+      default: break;
+   }
+   return 0;
+}
+
+u32 Vdp2ColorRamGetColor(u32 colorindex, int alpha)
+{
+   switch (Vdp2Internal.ColorMode)
+   {
+      case 0:
+      case 1:
+      {
+         u32 tmp;
+         colorindex <<= 1;
+         tmp = T2ReadWord(Vdp2ColorRam, colorindex & 0xFFF);
+         return SAT2YAB1(alpha, tmp);
+      }
+      case 2:
+      {
+         u32 tmp1, tmp2;
+         colorindex <<= 2;
+         colorindex &= 0xFFF;
+         tmp1 = T2ReadWord(Vdp2ColorRam, colorindex);
+         tmp2 = T2ReadWord(Vdp2ColorRam, colorindex + 2);
+         return SAT2YAB2(alpha, tmp1, tmp2);
+      }
+      default: break;
+   }
+   return 0;
+}
+#endif
+
 int VIDSoftInit(void);
 void VIDSoftSetupGL(void);
 void VIDSoftDeInit(void);

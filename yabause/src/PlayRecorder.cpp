@@ -216,7 +216,7 @@ int decompress_file(const char* input_path, const char* output_path) {
   return ret == Z_STREAM_END ? 0 : -1;
 }
 
-#if defined(IOS) || defined(WIN32)
+#if defined(IOS) || defined(WIN32) || defined(ARCH_IS_MACOSX)
 #include <filesystem>
 namespace fs = std::filesystem;
 #else
@@ -266,9 +266,9 @@ extern "C" int YabMakeCleanDir(const char * dirname) {
   }
   return 0;
 }
-#elif IOS
+#elif defined(IOS) || defined(ARCH_IS_MACOSX)
 #include <filesystem>
-namespace fs = filesystem;
+namespace fs = std::filesystem;
 #else
 #include <experimental/filesystem>
 namespace fs = experimental::filesystem;

@@ -22,6 +22,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 #include <functional>
 #include <string>  
 #include <vector>
+#include <fstream>
+#include <map>
+#include <cstdlib>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -40,6 +43,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 #include <time.h>
 #include "yabause.h"
 #include "../gbastation/YabLog.h"
+#include "../gbastation/Browser.h"
+#include "../gbastation/NvgUi.h"
+#include "../gbastation/UiFont.h"
+#include "nanovg.h"
+#define NANOVG_GLES3 1
+#include "nanovg_gl.h"
 extern "C" {
 void PlayRecorder_proc(u32) {}
 void PlayRecorder_setPlayMode(const char*, yabauseinit_struct*) {}
@@ -120,11 +129,71 @@ void userAppExit()
 #endif
 
 extern "C" {
-static char biospath[256] = "./yabasanshiro/bios.bin";
-static char cdpath[256] = "./yabasanshiro/nights.cue";
+static char biospath[256] = "sdmc:/GBAStation/bios/saturn/saturn_bios.bin";
+// Empty by default: with no ROM argument the built-in boot page is shown.
+static char cdpath[256] = "";
 //static char cdpath[256] = "/home/pigaming/RetroPie/roms/saturn/gd.cue";
 //static char cdpath[256] = "/home/pigaming/RetroPie/roms/saturn/Virtua Fighter Kids (1996)(Sega)(JP).ccd";
 static char buppath[256] = "./back.bin";
+
+static std::map<std::string, std::string> LoadGbaConfig()
+{
+  std::map<std::string, std::string> values;
+  std::ifstream in("sdmc:/GBAStation/config/config.cfg");
+  std::string line;
+  while (std::getline(in, line)) {
+    const size_t hash = line.find('#'); if (hash != std::string::npos) line.resize(hash);
+    const size_t eq = line.find('='); if (eq == std::string::npos) continue;
+    std::string key = line.substr(0, eq), value = line.substr(eq + 1);
+    while (!key.empty() && isspace((unsigned char)key.back())) key.pop_back();
+    while (!value.empty() && isspace((unsigned char)value.front())) value.erase(value.begin());
+    while (!value.empty() && isspace((unsigned char)value.back())) value.pop_back();
+    // GBAStation stores values as "<type>|<value>" (e.g. "s|path", "i|1",
+    // "sa|a,b").  Strip the short alphabetic type tag so consumers see the
+    // plain value.
+    const size_t bar = value.find('|');
+    if (bar != std::string::npos && bar > 0 && bar <= 2) {
+      bool is_type = true;
+      for (size_t i = 0; i < bar; ++i)
+        if (!isalpha((unsigned char)value[i])) { is_type = false; break; }
+      if (is_type) value.erase(0, bar + 1);
+    }
+    if (!key.empty()) values[key] = value;
+  }
+  return values;
+}
+
+static const char* ConfigValue(const std::map<std::string, std::string>& c,
+                               const char* key, const char* fallback)
+{
+  const auto it = c.find(key); return it == c.end() ? fallback : it->second.c_str();
+}
+
+static bool ConfigBool(const std::map<std::string, std::string>& c,
+                       const char* key, bool fallback)
+{
+  const auto it = c.find(key);
+  if (it == c.end()) return fallback;
+  const std::string& v = it->second;
+  if (v == "1" || v == "true" || v == "on" || v == "yes" || v == "enabled") return true;
+  if (v == "0" || v == "false" || v == "off" || v == "no" || v == "disabled") return false;
+  return fallback;
+}
+
+static int ConfigInt(const std::map<std::string, std::string>& c,
+                     const char* key, int fallback)
+{
+  const auto it = c.find(key);
+  if (it == c.end() || it->second.empty()) return fallback;
+  return atoi(it->second.c_str());
+}
+
+static std::string NormalizeSwitchPath(const char* path)
+{
+  if (!path) return std::string();
+  if (!strncmp(path, "/GBAStation/", 12)) return std::string("sdmc:") + path;
+  return std::string(path);
+}
 static char mpegpath[256] = "\0";
 static char cartpath[256] = "\0";
 
@@ -201,6 +270,19 @@ int g_keep_aspect_rate = 0;
 int g_scsp_sync = 1;
 int g_frame_skip = 0;
 int g_emulated_bios = 0;
+int g_video_filter = 0;
+int g_polygon_generation = 0;
+int g_rbg_resolution = 0;
+int g_rbg_compute_shader = 0;
+int g_extend_internal_memory = 0;
+int g_rotate_screen = 0;
+int g_scsp_sync_time_mode = 1;
+int g_cpu_sync_shift = 0;
+int g_frame_limit = 0;
+int g_cartridge = 0;
+int g_region = 0;
+int g_video_format = 0;
+int g_sound_engine = 1;
 //InputManager* inputmng;
 //MenuScreen * menu;
 
@@ -225,7 +307,15 @@ void YuiErrorMsg(const char *string)
 
 void YuiSwapBuffers(void)
 {
+  static unsigned long long present_count = 0;
+  ++present_count;
+  const GLenum before = glGetError();
   eglSwapBuffers(s_display, s_surface);
+  const GLenum after = glGetError();
+  if (before != GL_NO_ERROR || after != GL_NO_ERROR)
+    YabLogWrite("present gl_error_before=0x%04x after=0x%04x", before, after);
+  if (present_count <= 3 || (present_count % 60) == 0)
+    YabLogWrite("present frame=%llu", present_count);
   SetOSDToggle(g_EnagleFPS);
 }
 
@@ -263,19 +353,20 @@ int yabauseinit()
   yinit.m68kcoretype = M68KCORE_MUSASHI;
   yinit.percoretype = PERCORE_DUMMY;
 #ifdef SH2_DYNAREC
-    yinit.sh2coretype = 2;
+  // Use the Switch dynarec core; the interpreter can be too slow during BIOS
+  // startup and may leave TVMD disabled for an extended period.
+  yinit.sh2coretype = SH2CORE_DYNAREC;
 #else
-  //yinit.sh2coretype = 0;
-#endif
   yinit.sh2coretype = SH2CORE_INTERPRETER;
+#endif
   //yinit.vidcoretype = VIDCORE_SOFT;
   yinit.vidcoretype = VIDCORE_OGL;
   yinit.sndcoretype = SNDCORE_DUMMY;
   //yinit.sndcoretype = SNDCORE_DUMMY;
   //yinit.cdcoretype = CDCORE_DEFAULT;
   yinit.cdcoretype = CDCORE_ISO;
-  yinit.carttype = CART_NONE;
-  yinit.regionid = 0;
+  yinit.carttype = g_cartridge;
+  yinit.regionid = (u8)g_region;
   if( g_emulated_bios ){
     yinit.biospath = NULL;
   }else{
@@ -285,21 +376,27 @@ int yabauseinit()
   yinit.buppath = buppath;
   yinit.mpegpath = mpegpath;
   yinit.cartpath = cartpath;
-  yinit.videoformattype = VIDEOFORMATTYPE_NTSC;
+  yinit.videoformattype = g_video_format;
   yinit.frameskip = g_frame_skip;
+  yinit.framelimit = g_frame_limit;
   yinit.usethreads = 0;
   yinit.skip_load = 0;    
-  yinit.video_filter_type = 0;
-  yinit.polygon_generation_mode = PERSPECTIVE_CORRECTION; ////GPU_TESSERATION;
-  yinit.use_new_scsp = 1;
+  yinit.video_filter_type = g_video_filter;
+  yinit.polygon_generation_mode = g_polygon_generation;
+  yinit.use_new_scsp = g_sound_engine;
   yinit.resolution_mode = g_resolution_mode;
-  yinit.rotate_screen = 0;
+  yinit.rbg_resolution_mode = g_rbg_resolution;
+  yinit.rbg_use_compute_shader = g_rbg_compute_shader;
+  yinit.rotate_screen = g_rotate_screen;
   yinit.scsp_sync_count_per_frame = g_scsp_sync;
-  yinit.extend_backup = 0;
-  yinit.scsp_main_mode = 1;
+  yinit.extend_backup = g_extend_internal_memory;
+  yinit.scsp_main_mode = g_scsp_sync_time_mode;
+  yinit.sync_shift = g_cpu_sync_shift;
 
   res = YabauseInit(&yinit);
-  if( res == -1) {
+  YabLogWrite("YabauseInit returned %d", res);
+  if( res != 0) {
+    YabLogWrite("YabauseInit failed (res=%d)", res);
     return -1;
   }
 
@@ -313,6 +410,11 @@ int yabauseinit()
 
 static bool initEgl(NWindow* win)
 {
+    if (!eglBindAPI(EGL_OPENGL_ES_API))
+    {
+        TRACE("EGL bind OpenGL ES API failed: %d", eglGetError());
+        return false;
+    }
     // Connect to the EGL default display
     s_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
     if (!s_display)
@@ -336,6 +438,8 @@ static bool initEgl(NWindow* win)
         EGL_ALPHA_SIZE,   8,
         EGL_DEPTH_SIZE,   24,
         EGL_STENCIL_SIZE, 8,
+        EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+        EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
         EGL_NONE
     };
     if (!eglChooseConfig(s_display, framebufferAttributeList, &config, 1, &numConfigs))
@@ -370,6 +474,7 @@ static bool initEgl(NWindow* win)
     // Connect the context to the surface
     if (!eglMakeCurrent(s_display, s_surface, s_surface, s_context))
     { TRACE("EGL make current failed: %d", eglGetError()); goto _fail3; }
+    eglSwapInterval(s_display, 1);
     return true;
 
 _fail3:
@@ -404,15 +509,292 @@ static void deinitEgl()
     }
 }
 
+//==============================================================================
+// Built-in boot page (file selection UI)
+//==============================================================================
+namespace
+{
+NVGcontext* g_ui_vg = nullptr;
+GbBoot::UiFontSet g_ui_fonts;
+
+uint64_t TickNowMs()
+{
+  static const uint64_t freq = armGetSystemTickFreq();
+  return armGetSystemTick() * 1000ULL / freq;
+}
+
+void ResetGlStateForUi()
+{
+  glUseProgram(0);
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+  glBindVertexArray(0);
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, 0);
+  glDisable(GL_DEPTH_TEST);
+  glDisable(GL_SCISSOR_TEST);
+  glDisable(GL_STENCIL_TEST);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+}
+
+bool EnsureUiReady(const std::string& font_dir)
+{
+  if (g_ui_vg)
+    return true;
+  g_ui_vg = nvgCreateGLES3(NVG_ANTIALIAS);
+  if (!g_ui_vg)
+  {
+    YabLogWrite("bootpage: nvgCreateGLES3 failed");
+    return false;
+  }
+  if (!GbBoot::UiFontsLoad(g_ui_vg, g_ui_fonts,
+                           font_dir.empty() ? nullptr : font_dir.c_str()))
+  {
+    YabLogWrite("bootpage: UiFontsLoad failed");
+    return false;
+  }
+  YabLogWrite("bootpage fonts text=%d bold=%d switch=%d material=%d", g_ui_fonts.text,
+              g_ui_fonts.text_bold, g_ui_fonts.icons_switch, g_ui_fonts.icons_material);
+  return true;
+}
+
+void DestroyUi()
+{
+  if (g_ui_vg)
+  {
+    nvgDeleteGLES3(g_ui_vg);
+    g_ui_vg = nullptr;
+  }
+}
+
+std::string NameOf(const std::string& path)
+{
+  const auto slash = path.find_last_of("/\\");
+  return slash == std::string::npos ? path : path.substr(slash + 1);
+}
+
+void ShowLaunchOverlay(const std::string& rom, int fb_w, int fb_h)
+{
+  if (!g_ui_vg)
+    return;
+  glViewport(0, 0, fb_w, fb_h);
+  GbBoot::NvgUiDrawLaunchOverlay(g_ui_vg, g_ui_fonts, fb_w, fb_h, NameOf(rom).c_str());
+  eglSwapBuffers(s_display, s_surface);
+}
+
+struct RepeatKey
+{
+  bool held = false;
+  uint64_t next_ms = 0;
+};
+
+void UpdateRepeat(bool held_now, uint64_t now_ms, RepeatKey& state, int& action)
+{
+  action = 0;
+  if (!held_now)
+  {
+    state.held = false;
+    return;
+  }
+  if (!state.held)
+  {
+    state.held = true;
+    state.next_ms = now_ms + 280;
+    action = 1;
+  }
+  else if (now_ms >= state.next_ms)
+  {
+    state.next_ms = now_ms + 130;
+    action = 2;
+  }
+}
+
+// Shows the boot page and blocks until a game is picked (returns true, out_rom
+// filled) or the user quits (returns false).  Cleans up the UI GL context.
+bool RunBootPage(std::string& out_rom, const std::string& font_dir,
+                 const std::string& rom_root)
+{
+  int fb_w = 1280;
+  int fb_h = 720;
+  {
+    u32 w = 1280;
+    u32 h = 720;
+    nwindowGetDimensions(nwindowGetDefault(), &w, &h);
+    fb_w = static_cast<int>(w);
+    fb_h = static_cast<int>(h);
+  }
+
+  PadState pad;
+  padConfigureInput(1, HidNpadStyleSet_NpadStandard);
+  padInitializeDefault(&pad);
+
+  GbBoot::DirBrowser browser;
+  std::string status;
+  if (!EnsureUiReady(font_dir))
+  {
+    DestroyUi();
+    return false;
+  }
+
+  std::string err;
+  if (!browser.Open(rom_root, err))
+  {
+    status = "Cannot open " + rom_root;
+    YabLogWrite("bootpage: cannot open %s", rom_root.c_str());
+  }
+  YabLogWrite("bootpage root=%s entries=%u", rom_root.c_str(),
+              static_cast<unsigned>(browser.Entries().size()));
+  for (size_t i = 0; i < browser.Entries().size() && i < 8; ++i)
+  {
+    const GbBoot::DirEntry& e = browser.Entries()[i];
+    YabLogWrite("bootpage entry[%u] %s dir=%d game=%d", static_cast<unsigned>(i),
+                e.name.c_str(), e.is_dir ? 1 : 0, e.is_game ? 1 : 0);
+  }
+
+  bool selected = false;
+  while (appletMainLoop())
+  {
+    ResetGlStateForUi();
+    glViewport(0, 0, fb_w, fb_h);
+
+    padUpdate(&pad);
+    const u64 kHeld = padGetButtons(&pad);
+    const u64 kDown = padGetButtonsDown(&pad);
+
+    if (kDown & HidNpadButton_StickL)
+      break;  // exit to host / hbmenu
+
+    if (kDown & HidNpadButton_Y)
+      browser.SetGamesOnly(!browser.GamesOnly());
+    if (kDown & HidNpadButton_X)
+      browser.CycleSort();
+
+    const uint64_t now_ms = TickNowMs();
+    static RepeatKey repeat_up;
+    static RepeatKey repeat_down;
+    int action_up = 0;
+    int action_down = 0;
+    UpdateRepeat((kHeld & HidNpadButton_Up) != 0, now_ms, repeat_up, action_up);
+    UpdateRepeat((kHeld & HidNpadButton_Down) != 0, now_ms, repeat_down, action_down);
+    if (action_up)
+      browser.MoveCursor(-1);
+    if (action_down)
+      browser.MoveCursor(1);
+
+    const bool confirm = (kDown & (HidNpadButton_A | HidNpadButton_Right)) != 0;
+    const bool back = (kDown & (HidNpadButton_B | HidNpadButton_Left)) != 0;
+
+    if (confirm && browser.Activate())
+    {
+      out_rom = browser.Selected();
+      selected = true;
+      break;
+    }
+    if (back)
+      browser.GoParent();
+
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    GbBoot::NvgUiDrawBrowser(g_ui_vg, browser, g_ui_fonts, fb_w, fb_h,
+                             status.empty() ? nullptr : status.c_str());
+    eglSwapBuffers(s_display, s_surface);
+    svcSleepThread(16ULL * 1000000ULL);
+  }
+
+  if (selected)
+    YabLogWrite("bootpage selected rom=%s", out_rom.c_str());
+  else
+    YabLogWrite("bootpage exited without selection");
+
+  DestroyUi();
+  ResetGlStateForUi();
+  return selected;
+}
+
+void ReturnToLauncher(const std::string& return_nro, const std::string& session)
+{
+  if (return_nro.empty() || !envHasNextLoad())
+    return;
+  const std::string args = return_nro +
+      (session.empty() ? " --resume" : " --external-return " + session);
+  envSetNextLoad(return_nro.c_str(), args.c_str());
+}
+}  // namespace
+
 
 int main(int argc, char** argv)
 {
   YabLogInit("sdmc:/GBAStation/log/ss.log");
   YabLogWrite("startup argc=%d", argc);
+  for (int i = 0; i < argc; ++i) YabLogWrite("argv[%d]=%s", i, argv[i] ? argv[i] : "(null)");
   //inputmng = InputManager::getInstance();
 
   std::string bckup_dir = "./backup.bin";
   strcpy( buppath, bckup_dir.c_str() );
+
+  const std::map<std::string, std::string> config = LoadGbaConfig();
+  const char* configuredBios = ConfigValue(config, "core.saturn.biosPath", ConfigValue(config, "core.saturn.bios_path", ConfigValue(config, "saturn.biosPath", biospath)));
+  const char* configuredBackup = ConfigValue(config, "core.saturn.savePath", ConfigValue(config, "core.saturn.backupPath", ConfigValue(config, "saturn.savePath", buppath)));
+  snprintf(biospath, sizeof biospath, "%s", NormalizeSwitchPath(configuredBios).c_str());
+  snprintf(buppath, sizeof buppath, "%s", NormalizeSwitchPath(configuredBackup).c_str());
+  g_resolution_mode = ConfigInt(config, "core.saturn.resolution_mode",
+                       ConfigInt(config, "core.saturn.resolutionMode", 0));
+  g_keep_aspect_rate = ConfigInt(config, "core.saturn.aspect_ratio",
+                        ConfigInt(config, "core.saturn.keep_aspect_rate",
+                         ConfigInt(config, "core.saturn.keepAspectRatio", 0)));
+  g_scsp_sync = ConfigInt(config, "core.saturn.scsp_sync_per_frame",
+               ConfigInt(config, "core.saturn.scspSyncPerFrame", 1));
+  g_frame_skip = ConfigInt(config, "core.saturn.frame_skip",
+                 ConfigInt(config, "core.saturn.frameSkip", 0));
+  g_frame_limit = ConfigInt(config, "core.saturn.frame_limit", 0);
+  g_video_filter = ConfigInt(config, "core.saturn.video_filter", 0);
+  g_polygon_generation = ConfigInt(config, "core.saturn.polygon_generation", 0);
+  g_rbg_resolution = ConfigInt(config, "core.saturn.rbg_resolution", 0);
+  g_rbg_compute_shader = ConfigBool(config, "core.saturn.rbg_compute_shader", false) ? 1 : 0;
+  g_extend_internal_memory = ConfigBool(config, "core.saturn.extend_internal_memory", false) ? 1 : 0;
+  g_rotate_screen = ConfigBool(config, "core.saturn.rotate_screen", false) ? 1 : 0;
+  g_scsp_sync_time_mode = ConfigInt(config, "core.saturn.scsp_sync_time_mode", 1);
+  g_sound_engine = ConfigInt(config, "core.saturn.sound_engine", 1);
+  g_cartridge = ConfigInt(config, "core.saturn.cartridge", 0);
+  g_region = ConfigInt(config, "core.saturn.region", 0);
+  g_video_format = ConfigInt(config, "core.saturn.video_format", 0);
+  g_emulated_bios = ConfigBool(config, "core.saturn.emulated_bios",
+                     ConfigBool(config, "core.saturn.emulatedBios", false)) ? 1 : 0;
+  // cpu_sync_per_line is expressed as calls per line (1/2/4/8); the core uses
+  // the corresponding power-of-two shift.
+  switch (ConfigInt(config, "core.saturn.cpu_sync_per_line", 1)) {
+    case 2:  g_cpu_sync_shift = 1; break;
+    case 4:  g_cpu_sync_shift = 2; break;
+    case 8:  g_cpu_sync_shift = 3; break;
+    default: g_cpu_sync_shift = 0; break;
+  }
+
+  // GBAStation Switch protocol: positional ROM path, optional return NRO and session token.
+  std::string return_nro;
+  std::string session_token;
+  for (int i = 1; i < argc; ++i) {
+    if (!argv[i]) continue;
+    if (!strcmp(argv[i], "--return") && i + 1 < argc) { return_nro = argv[++i]; YabLogWrite("return NRO=%s", return_nro.c_str()); continue; }
+    if (!strcmp(argv[i], "--gbastation-session") && i + 1 < argc) { session_token = argv[++i]; YabLogWrite("session=%s", session_token.c_str()); continue; }
+    if (argv[i][0] != '-' && cdpath[0] == '\0') {
+      const std::string normalized = NormalizeSwitchPath(argv[i]);
+      snprintf(cdpath, sizeof cdpath, "%s", normalized.c_str());
+    }
+  }
+  YabLogWrite("launch rom=%s bios=%s backup=%s", cdpath, biospath, buppath);
+  YabLogWrite("settings emulatebios=%d resolution=%d frameskip=%d framelimit=%d filter=%d polygon=%d aspect=%d rotate=%d rbg_res=%d rbg_cs=%d extmem=%d sound=%d scsp_sync=%d scsp_mode=%d cpu_sync_shift=%d cart=%d region=%d format=%d",
+              g_emulated_bios, g_resolution_mode, g_frame_skip, g_frame_limit, g_video_filter,
+              g_polygon_generation, g_keep_aspect_rate, g_rotate_screen, g_rbg_resolution,
+              g_rbg_compute_shader, g_extend_internal_memory, g_sound_engine, g_scsp_sync,
+              g_scsp_sync_time_mode, g_cpu_sync_shift, g_cartridge, g_region, g_video_format);
+  {
+    FILE *bf = fopen(biospath, "rb");
+    FILE *rf = fopen(cdpath, "rb");
+    YabLogWrite("input files bios=%s rom=%s", bf ? "ok" : "missing", rf ? "ok" : "missing");
+    if (bf) { fseek(bf, 0, SEEK_END); YabLogWrite("bios size=%ld", ftell(bf)); fclose(bf); }
+    if (rf) { fseek(rf, 0, SEEK_END); YabLogWrite("rom size=%ld", ftell(rf)); fclose(rf); }
+  }
 
 #if 0  
   printf("\033[2J");
@@ -484,18 +866,56 @@ int main(int argc, char** argv)
   printf("Extentions: %s\n",glGetString(GL_EXTENSIONS));
 
   YabLogWrite("EGL renderer=%s version=%s", glGetString(GL_RENDERER), glGetString(GL_VERSION));
+
+  // No ROM argument: show the built-in file selection boot page.
+  if (cdpath[0] == '\0') {
+    const Result romfs_rc = romfsInit();
+    YabLogWrite("romfsInit result=0x%x", static_cast<unsigned>(romfs_rc));
+    const std::string romRoot = ConfigValue(config, "core.saturn.rom_dir",
+        ConfigValue(config, "core.saturn.romPath", "sdmc:/GBAStation/roms/saturn"));
+    const std::string fontDir = ConfigValue(config, "core.saturn.font_dir",
+        ConfigValue(config, "core.saturn.fontDir", "sdmc:/GBAStation/font"));
+    std::string picked;
+    if (!RunBootPage(picked, fontDir, romRoot)) {
+      deinitEgl();
+      ReturnToLauncher(return_nro, session_token);
+      YabLogWrite("bootpage quit, exit");
+      YabLogShutdown();
+      return 0;
+    }
+    snprintf(cdpath, sizeof cdpath, "%s", picked.c_str());
+    YabLogWrite("bootpage launching rom=%s", cdpath);
+  }
+
+  YabLogWrite("yabauseinit begin");
   if( yabauseinit() == -1 ) {
       printf("Fail to yabauseinit Bye! (%s)", SDL_GetError() );
       YabLogWrite("yabauseinit failed"); YabLogShutdown();
       return -1;
   }
+  YabLogWrite("yabauseinit complete");
+  YabLogWrite("saturn state emulatebios=%d ssh2running=%d", yabsys.emulatebios, yabsys.IsSSH2Running);
+  GLint initFbo = -1;
+  glGetIntegerv(GL_FRAMEBUFFER_BINDING, &initFbo);
+  YabLogWrite("render init framebuffer=%d viewport=%d,%d", initFbo, 1280, 720);
 
   int width = 1280;
   int height = 720;
-  VIDCore->Resize(0,0,width,height,0,0);
+  VIDCore->Resize(0,0,width,height,0,g_keep_aspect_rate);
   glViewport(0,0,width,height);
   glClearColor( 0.0f, 0.0f,0.0f,1.0f);
   glClear( GL_COLOR_BUFFER_BIT );
+  glFlush();
+  eglSwapBuffers(s_display, s_surface);
+  // Verify that the Switch EGL surface itself is visible before the emulator
+  // starts drawing.  Keep the clear black so this is invisible to users.
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  glViewport(0, 0, width, height);
+  glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+  glClear(GL_COLOR_BUFFER_BIT);
+  glFlush();
+  eglSwapBuffers(s_display, s_surface);
+  YabLogWrite("initial surface present gl_error=0x%04x", glGetError());
 
 #if 0
   inputmng->init(g_keymap_filename);
@@ -722,6 +1142,8 @@ int main(int argc, char** argv)
   PerSetKey(MAKE_PAD(0,PERPAD_RIGHT_TRIGGER),PERPAD_RIGHT_TRIGGER,padbits);
   PerSetKey(MAKE_PAD(0,PERPAD_LEFT_TRIGGER),PERPAD_LEFT_TRIGGER,padbits);
 
+  unsigned long long frame_count = 0;
+  YabLogWrite("emulation loop begin");
   while(appletMainLoop()) {
 #if 0
       // Get and process input
@@ -754,11 +1176,22 @@ int main(int argc, char** argv)
     //eglSwapBuffers(s_display, s_surface);
     YabauseExec(); // exec one frame
 #endif
+    const bool trace_boot = frame_count >= 120 && frame_count < 240;
+    if (trace_boot) YabLogWrite("boot frame=%llu exec begin", frame_count + 1);
     YabauseExec();
+    if (trace_boot) YabLogWrite("boot frame=%llu exec end", frame_count + 1);
+    glFlush();
+    ++frame_count;
+    if ((frame_count % 60) == 0) {
+      YabLogWrite("emulation frame=%llu swap_error=0x%04x", frame_count, eglGetError());
+      if (MSH2) YabLogWrite("master sh2 pc=0x%08x cycles=%u sleep=%d", MSH2->regs.PC, MSH2->cycles, MSH2->isSleeping);
+      if (SSH2) YabLogWrite("slave sh2 pc=0x%08x cycles=%u sleep=%d", SSH2->regs.PC, SSH2->cycles, SSH2->isSleeping);
+    }
   }
 #endif  
   YabauseDeInit();
   deinitEgl();
+  ReturnToLauncher(return_nro, session_token);
   YabLogWrite("normal exit");
   YabLogShutdown();
   return 0;

@@ -53,6 +53,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 #include "cs0.h"
 #include "cs2.h"
 #include "debug.h"
+#ifdef NX
+#include "gbastation/YabLog.h"
+#endif
 #include "error.h"
 #include "memory.h"
 #include "m68kcore.h"
@@ -944,6 +947,9 @@ void SyncCPUtoSCSP() {
 
 void YabauseStartSlave(void) {
 
+#ifdef NX
+  YabLogWrite("YabauseStartSlave begin emulatebios=%d", yabsys.emulatebios);
+#endif
   LOG("YabauseStartSlave");
 
    if (yabsys.emulatebios)
@@ -997,6 +1003,9 @@ void YabauseStartSlave(void) {
    }
 
    yabsys.IsSSH2Running = 1;
+#ifdef NX
+   YabLogWrite("YabauseStartSlave end pc=0x%08x sp=0x%08x running=%d", SSH2->regs.PC, SSH2->regs.R[15], yabsys.IsSSH2Running);
+#endif
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -1404,7 +1413,7 @@ int YabauseQuickLoadGame(void)
    return 0;
 }
 
-#if !defined(IOS)
+#if !defined(IOS) && !defined(ARCH_IS_MACOSX)
 #include <malloc.h>
 #endif
 

@@ -51,6 +51,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 #include "scu.h"
 #include "sh2core.h"
 #include "vdp1.h"
+#ifdef NX
+#include "gbastation/YabLog.h"
+#endif
 #include "vdp2.h"
 #include "yabause.h"
 #include "movie.h"
@@ -155,7 +158,13 @@ void SmpcReset(void) {
 //////////////////////////////////////////////////////////////////////////////
 
 static void SmpcSSHON(void) {
+#ifdef NX
+   YabLogWrite("SMPC SSHON command");
+#endif
    YabauseStartSlave();
+#ifdef NX
+   YabLogWrite("SMPC SSHON complete running=%d pc=0x%08x", yabsys.IsSSH2Running, SSH2 ? SSH2->regs.PC : 0);
+#endif
 }
 
 //////////////////////////////////////////////////////////////////////////////

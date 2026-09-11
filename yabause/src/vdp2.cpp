@@ -1268,12 +1268,15 @@ void vdp2VBlankOUT(void) {
       if (0) {
 #endif
       }
+#if defined(HAVE_LIBGL) || defined(__ANDROID__) || defined(IOS) || defined(NX)
       else if (VIDCore->id == VIDCORE_OGL) {
         VIDCore->Vdp2DrawStart = VIDOGLVdp2DrawStart;
         VIDCore->Vdp2DrawEnd = VIDOGLVdp2DrawEnd;
         VIDCore->Vdp2DrawScreens = VIDOGLVdp2DrawScreens;
       }
-      else if (VIDCore->id == VIDCORE_SOFT ) {
+      else
+#endif
+      if (VIDCore->id == VIDCORE_SOFT ) {
         VIDCore->Vdp2DrawStart = VIDSoftVdp2DrawStart;
         VIDCore->Vdp2DrawEnd = VIDSoftVdp2DrawEnd;
         VIDCore->Vdp2DrawScreens = VIDSoftVdp2DrawScreens;

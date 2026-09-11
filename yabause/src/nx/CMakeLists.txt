@@ -19,6 +19,9 @@ set(PORT_LIBRARIES EGL GLESv2 glapi drm_nouveau nx m SDL2  )
 set(yabause_nx_SOURCES
 	main.cpp
 	../gbastation/YabLog.c
+	../gbastation/Browser.cpp
+	../gbastation/NvgUi.cpp
+	../gbastation/UiFont.cpp
 	../thr-nx.c
 	#InputManager.h
 	#InputManager.cpp
@@ -44,9 +47,20 @@ yab_port_success(yabause-nx)
 #install(TARGETS yabause-xu4 DESTINATION "/opt/retropie/emulators/yabasanshiro/")
 #install(FILES "README.md" DESTINATION "/opt/retropie/emulators/yabasanshiro/" )
 
+#------------------------------------------------------------------------------
+# romfs: embed the Material icon font so the boot page can draw folder/file/
+# back glyphs on Switch (the system only ships text + NintendoExt).
+set(GBA_ROMFS_DIR "${CMAKE_BINARY_DIR}/romfs")
+file(MAKE_DIRECTORY "${GBA_ROMFS_DIR}/font")
+set(GBA_MATERIAL_FONT "${CMAKE_CURRENT_SOURCE_DIR}/../../../res/font/MaterialIcons-Regular.ttf")
+if (EXISTS "${GBA_MATERIAL_FONT}")
+	file(COPY "${GBA_MATERIAL_FONT}" DESTINATION "${GBA_ROMFS_DIR}/font")
+endif()
+
 add_custom_command(TARGET yabause-nx
         POST_BUILD
-        COMMAND /bin/bash ${CMAKE_CURRENT_SOURCE_DIR}/genSwitchExecutables.sh 
+        COMMAND /bin/bash ${CMAKE_CURRENT_SOURCE_DIR}/genSwitchExecutables.sh
+                "${GBA_ROMFS_DIR}"
 				)
 				
 install(TARGETS yabause-nx DESTINATION "bin")

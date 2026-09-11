@@ -26,4 +26,4 @@ cmake -S "${SOURCE_DIR}" -B "${BUILD_DIR}" -G Ninja \
 cmake --build "${BUILD_DIR}" --parallel "${JOBS:-$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)}"
 
 echo "Switch build complete"
-find "${BUILD_DIR}" -maxdepth 2 -type f \( -name '*.nro' -o -name '*.nso' \) -print
+find "${BUILD_DIR}" -maxdepth 2 -type f \( -name 'GBAStationYabaSanshiroStub.nro' -o -name 'GBAStationYabaSanshiroStub.nso' \) -print

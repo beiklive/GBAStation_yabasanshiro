@@ -30,6 +30,11 @@ extern "C" {
 
 #include <math.h>
 
+// This file implements the OpenGL/Vulkan texture manager used by the GL
+// renderers.  It has no meaning for pure software builds, so compile it out
+// when no GL/Vulkan backend is available.
+#if defined(HAVE_LIBGL) || defined(_OGLES3_) || defined(HAVE_VULKAN)
+
 #if defined(HAVE_VULKAN)
 #include "vulkan/VIDVulkan.h"
 #include "vulkan/VulkanTools.h"
@@ -4748,3 +4753,5 @@ extern "C" {
 }
 
 
+
+#endif // HAVE_LIBGL || _OGLES3_ || HAVE_VULKAN

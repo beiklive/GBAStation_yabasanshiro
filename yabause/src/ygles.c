@@ -25,6 +25,9 @@
 #include "vidshared.h"
 #include "debug.h"
 #include "frameprofile.h"
+#if defined(NX)
+#include "gbastation/YabLog.h"
+#endif
 
 #define NUM_TEXTURE_BUFFER 1
 
@@ -3105,6 +3108,11 @@ void YglFrameChangeVDP1(){
 
 //////////////////////////////////////////////////////////////////////////////
 void YglRenderVDP1(void) {
+#ifdef NX
+  static unsigned int boot_vdp1_calls = 0;
+  const unsigned int boot_vdp1_call = ++boot_vdp1_calls;
+  if (boot_vdp1_call <= 120) YabLogWrite("VDP1 call=%u begin", boot_vdp1_call);
+#endif
   YglLevel * level;
   GLuint cprg=0;
   int j;
@@ -3142,8 +3150,14 @@ void YglRenderVDP1(void) {
   cprg = -1;
 
   YglGenFrameBuffer();
+#ifdef NX
+  if (boot_vdp1_call <= 20) YabLogWrite("VDP1 call=%u genfb ok", boot_vdp1_call);
+#endif
   if(level->prgcurrent != 0)
     YglDrawCpuFramebufferWrite(_Ygl->drawframe);
+#ifdef NX
+  if (boot_vdp1_call <= 20) YabLogWrite("VDP1 call=%u cpufb ok", boot_vdp1_call);
+#endif
 
   glBindFramebuffer(GL_FRAMEBUFFER, _Ygl->vdp1fbo);
   glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _Ygl->vdp1FrameBuff[_Ygl->drawframe], 0);
@@ -3158,6 +3172,9 @@ void YglRenderVDP1(void) {
     //YGLLOG("Framebuffer status OK = %08X\n", status );
   }
 
+#ifdef NX
+  if (boot_vdp1_call <= 20) YabLogWrite("VDP1 call=%u status ok", boot_vdp1_call);
+#endif
   glDisable(GL_STENCIL_TEST);
   glDisable(GL_DEPTH_TEST);
   glDisable(GL_BLEND);
@@ -3179,6 +3196,9 @@ void YglRenderVDP1(void) {
       level->prg[j].setupUniform((void*)&level->prg[j]);
     }
     if( level->prg[j].currentQuad != 0 ) {
+#ifdef NX
+      if (boot_vdp1_call <= 20) YabLogWrite("VDP1 call=%u j=%d prgid=%d quad=%d", boot_vdp1_call, j, level->prg[j].prgid, level->prg[j].currentQuad);
+#endif
       glUniformMatrix4fv(level->prg[j].mtxModelView, 1, GL_FALSE, (GLfloat*)&m.m[0][0]);
       glVertexAttribPointer(level->prg[j].vertexp, 2, GL_FLOAT, GL_FALSE, 0, (GLvoid *)level->prg[j].quads);
       glVertexAttribPointer(level->prg[j].texcoordp,4,GL_FLOAT,GL_FALSE,0,(GLvoid *)level->prg[j].textcoords );
@@ -3200,6 +3220,9 @@ void YglRenderVDP1(void) {
       }else{
         glDrawArrays(GL_TRIANGLES, 0, level->prg[j].currentQuad / 2);
       }
+#ifdef NX
+      if (boot_vdp1_call <= 20) YabLogWrite("VDP1 call=%u j=%d draw ok", boot_vdp1_call, j);
+#endif
       level->prg[j].currentQuad = 0;
       _Ygl->cpu_framebuffer_write[ _Ygl->drawframe] = 0;
     }
@@ -3224,6 +3247,9 @@ void YglRenderVDP1(void) {
   glEnable(GL_BLEND);
   glFlush();
   FrameProfileAdd("YglRenderVDP1 end");
+#ifdef NX
+  if (boot_vdp1_call <= 120) YabLogWrite("VDP1 call=%u end", boot_vdp1_call);
+#endif
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -3794,6 +3820,16 @@ void YglRender(void) {
    YGLLOG("YglRender\n");
 
    FrameProfileAdd("YglRender start");
+   static unsigned int render_log_count = 0;
+   if (render_log_count < 3 || (render_log_count % 60) == 0) {
+#if defined(NX)
+     YabLogWrite("NX render #%u TVMD=0x%04x needfb=%d default=%u fxaa=%u resmode=%d width=%d height=%d",
+            render_log_count, Vdp2Regs->TVMD, YglIsNeedFrameBuffer(),
+            _Ygl->default_fbo, _Ygl->fxaa_fbo, _Ygl->resolution_mode,
+            _Ygl->width, _Ygl->height);
+#endif
+   }
+   ++render_log_count;
    if ((Vdp2Regs->TVMD & 0x8000) == 0){
      glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
@@ -4879,5 +4915,3 @@ void YglSetPerlineBuf(YglPerLineInfo * perline, u32 * pbuf, int linecount, int d
   glBindTexture(GL_TEXTURE_2D, 0);
   return;
 }
-
-
